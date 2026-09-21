@@ -175,6 +175,7 @@ export const products = {
       category?: string;
       brand?: string;
       unit?: string;
+      ncm?: string;
       source?: string;
     }>(`/products/lookup-barcode/${encodeURIComponent(barcode)}`),
 };
@@ -280,3 +281,49 @@ export const supervisor = {
       body: JSON.stringify({ pin }),
     }),
 };
+
+// ─── Fiscal / NFC-e ──────────────────────────────────────────────────
+
+export const fiscal = {
+  uploadCertificate: (pfxBase64: string, password?: string) =>
+    request<{
+      success: boolean;
+      message: string;
+      owner: string;
+      cnpj?: string;
+      expiresAt: string;
+      daysRemaining: number;
+    }>('/fiscal/certificate', {
+      method: 'POST',
+      body: JSON.stringify({ pfxBase64, password }),
+    }),
+
+  emitNfce: (saleId: string, customerCpf?: string) =>
+    request<{
+      success: boolean;
+      fiscalStatus: string;
+      accessKey?: string;
+      protocol?: string;
+      number?: number;
+      series?: number;
+      qrCodeUrl?: string;
+      errorMessage?: string;
+    }>(`/fiscal/emit/${saleId}`, {
+      method: 'POST',
+      body: JSON.stringify({ customerCpf }),
+    }),
+
+  getDanfe: (saleId: string) =>
+    request<{
+      sale: any;
+      store: any;
+      isFiscal: boolean;
+      accessKey?: string;
+      protocol?: string;
+      number?: number;
+      series?: number;
+      qrCodeUrl?: string;
+      issuedAt?: string;
+    }>(`/fiscal/danfe/${saleId}`),
+};
+

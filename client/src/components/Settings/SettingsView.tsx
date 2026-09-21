@@ -10,7 +10,12 @@ import {
   Sparkles,
   ShieldCheck,
   Loader2,
-  Database
+  Database,
+  FileText,
+  Key,
+  Upload,
+  AlertCircle,
+  Award
 } from 'lucide-react';
 import { StoreSettings } from '../../types';
 import * as api from '../../services/api';
@@ -30,6 +35,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [formData, setFormData] = useState<StoreSettings>({ ...settings });
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Certificate A1 state
+  const [certFileBase64, setCertFileBase64] = useState<string>('');
+  const [certPassword, setCertPassword] = useState<string>('');
+  const [certFileName, setCertFileName] = useState<string>('');
+  const [certLoading, setCertLoading] = useState<boolean>(false);
+  const [certFeedback, setCertFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleCertificateFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCertFileName(file.name);
+    setCertFeedback(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string) || '';
+      setCertFileBase64(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadCertificate = async () => {
+    if (!certFileBase64) {
+      alert('Selecione o arquivo .pfx do Certificado Digital A1.');
+      return;
+    }
+    setCertLoading(true);
+    setCertFeedback(null);
+    try {
+      const res = await api.fiscal.uploadCertificate(certFileBase64, certPassword);
+      sound.playSuccess();
+      setCertFeedback({
+        type: 'success',
+        text: `Certificado válido! Titular: ${res.owner} (${res.daysRemaining} dias restantes).`,
+      });
+      setFormData((prev) => ({
+        ...prev,
+        enableNfce: true,
+        certificateOwner: res.owner,
+        certificateExpiresAt: res.expiresAt,
+      }));
+    } catch (err: any) {
+      sound.playAlert();
+      setCertFeedback({
+        type: 'error',
+        text: err.message || 'Erro ao validar certificado. Verifique a senha.',
+      });
+    } finally {
+      setCertLoading(false);
+    }
+  };
 
   const handleChange = (field: keyof StoreSettings, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -313,6 +369,239 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
 
+        </div>
+
+        {/* CARD FISCAL: NFC-e & Certificado Digital A1 */}
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center space-x-2 text-slate-900 font-black text-base">
+              <FileText className="w-5 h-5 text-emerald-600" />
+              <span>Emissão Fiscal & NFC-e (Cupom Fiscal Oficial)</span>
+            </div>
+            <span className={`px-2.5 py-1 text-xs font-black rounded-full uppercase ${
+              formData.enableNfce ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {formData.enableNfce ? 'Habilitado' : 'Desabilitado'}
+            </span>
+          </div>
+
+          {/* Toggle Enable NFC-e */}
+          <label className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors">
+            <div>
+              <span className="text-xs font-bold text-slate-900 block">Ativar Emissão de Cupom Fiscal (NFC-e)</span>
+              <span className="text-[11px] text-slate-500 block">
+                Permite emitir cupons fiscais eletrônicos oficiais autorizados pela SEFAZ diretamente na frente de caixa
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={Boolean(formData.enableNfce)}
+              onChange={(e) => handleChange('enableNfce', e.target.checked)}
+              className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500"
+            />
+          </label>
+
+          {formData.enableNfce && (
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              
+              {/* Environment Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Ambiente da SEFAZ *
+                  </label>
+                  <select
+                    value={formData.fiscalEnvironment || 'homologacao'}
+                    onChange={(e) => handleChange('fiscalEnvironment', e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
+                  >
+                    <option value="homologacao">🧪 Homologação (Ambiente de Testes - Sem valor fiscal)</option>
+                    <option value="producao">🚀 Produção (Oficial - Gera Imposto Real na SEFAZ)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Estado / UF Emissora
+                  </label>
+                  <select
+                    value={formData.stateUf || 'SP'}
+                    onChange={(e) => handleChange('stateUf', e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
+                  >
+                    <option value="SP">SP - São Paulo (SEFAZ-SP)</option>
+                    <option value="RJ">RJ - Rio de Janeiro</option>
+                    <option value="MG">MG - Minas Gerais</option>
+                    <option value="PR">PR - Paraná</option>
+                    <option value="RS">RS - Rio Grande do Sul</option>
+                    <option value="SC">SC - Santa Catarina</option>
+                    <option value="BA">BA - Bahia</option>
+                    <option value="GO">GO - Goiás</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Inscrição Estadual & Regime Tributário */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Inscrição Estadual (IE) *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.stateRegistration || ''}
+                    onChange={(e) => handleChange('stateRegistration', e.target.value)}
+                    placeholder="Ex: 123.456.789.110"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Regime Tributário (CRT)
+                  </label>
+                  <select
+                    value={formData.taxRegime || '1'}
+                    onChange={(e) => handleChange('taxRegime', e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 outline-none focus:border-emerald-500"
+                  >
+                    <option value="1">1 - Simples Nacional (Padrão Pequeno Varejo)</option>
+                    <option value="2">2 - Simples Nacional - Excesso de Sublimite</option>
+                    <option value="3">3 - Regime Normal (Lucro Presumido / Real)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Série da NFC-e
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={formData.nfceSeries || 1}
+                    onChange={(e) => handleChange('nfceSeries', parseInt(e.target.value, 10) || 1)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* CSC Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    ID do CSC (SEFAZ)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cscId || ''}
+                    onChange={(e) => handleChange('cscId', e.target.value)}
+                    placeholder="Ex: 000001"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Normalmente 000001 ou 000002 fornecido pelo portal da SEFAZ</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Código de Segurança do Contribuinte (Token CSC)
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.cscToken || ''}
+                    onChange={(e) => handleChange('cscToken', e.target.value)}
+                    placeholder="Chave alfanumérica secreta da SEFAZ"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Token gerado pelo contador na Nota Fiscal Paulista / Posto Fiscal</span>
+                </div>
+              </div>
+
+              {/* Certificate A1 (.pfx) Upload Box */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center space-x-2 text-slate-900 font-bold text-xs uppercase tracking-wider">
+                  <Key className="w-4 h-4 text-emerald-600" />
+                  <span>Certificado Digital A1 (.pfx ou .p12)</span>
+                </div>
+
+                {formData.certificateOwner && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2 text-emerald-800">
+                      <Award className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="font-bold block">Certificado A1 Configurado e Ativo</span>
+                        <span className="text-[11px] text-emerald-700">
+                          Titular: {formData.certificateOwner} • Expira em:{' '}
+                          {formData.certificateExpiresAt ? new Date(formData.certificateExpiresAt).toLocaleDateString('pt-BR') : 'Data registrada'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 font-black text-[10px] rounded-full uppercase">
+                      OK
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      {formData.certificateOwner ? 'Substituir Arquivo .pfx' : 'Selecione o Arquivo .pfx'}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pfx,.p12"
+                      onChange={handleCertificateFileChange}
+                      className="w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200 cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Senha do Certificado A1
+                    </label>
+                    <div className="flex space-x-2">
+                      <input
+                        type="password"
+                        value={certPassword}
+                        onChange={(e) => setCertPassword(e.target.value)}
+                        placeholder="Senha do arquivo .pfx"
+                        className="flex-1 p-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUploadCertificate}
+                        disabled={certLoading || !certFileBase64}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl transition-all flex items-center space-x-1 shrink-0"
+                      >
+                        {certLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Upload className="w-4 h-4" />
+                        )}
+                        <span>{certLoading ? 'Validando...' : 'Testar & Salvar'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {certFeedback && (
+                  <div className={`p-2.5 rounded-xl text-xs flex items-center space-x-2 ${
+                    certFeedback.type === 'success'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-rose-100 text-rose-800 border border-rose-300'
+                  }`}>
+                    {certFeedback.type === 'success' ? (
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span className="font-semibold">{certFeedback.text}</span>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
         </div>
 
         {/* CARD 4: Database & Remote Access */}

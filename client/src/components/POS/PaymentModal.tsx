@@ -24,7 +24,7 @@ interface PaymentModalProps {
   total: number;
   settings: StoreSettings;
   onClose: () => void;
-  onPaymentSuccess: (payments: PaymentDetail[], amountPaid: number, change: number, customerName?: string) => void;
+  onPaymentSuccess: (payments: PaymentDetail[], amountPaid: number, change: number, customerName?: string, customerCpf?: string) => void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -53,6 +53,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   // Fiado details
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerCpf, setCustomerCpf] = useState('');
 
   // Split / Multi payment details
   const [splitMethod1, setSplitMethod1] = useState<PaymentMethod>('dinheiro');
@@ -176,7 +177,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       // Ignore
     }
 
-    onPaymentSuccess(payments, paid, change, customerName.trim() || undefined);
+    onPaymentSuccess(
+      payments,
+      paid,
+      change,
+      customerName.trim() || undefined,
+      customerCpf.trim().replace(/\D/g, '') || undefined
+    );
   };
 
   // Keyboard shortcut inside modal
@@ -613,8 +620,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
+          {/* CPF na Nota Fiscal */}
+          <div className="pt-2">
+            <div className="flex items-center space-x-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <input
+                type="text"
+                value={customerCpf}
+                onChange={(e) => setCustomerCpf(e.target.value)}
+                placeholder="CPF na Nota Fiscal? (opcional - digite apenas números)"
+                className="flex-1 bg-transparent text-xs font-mono font-medium text-slate-800 placeholder-slate-400 outline-none"
+                maxLength={14}
+              />
+              {customerCpf && (
+                <button
+                  type="button"
+                  onClick={() => setCustomerCpf('')}
+                  className="text-slate-400 hover:text-slate-600 p-1 text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Confirm Payment Footer Action */}
-          <div className="pt-6 border-t border-slate-100 flex items-center justify-end space-x-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
             <button
               type="button"
               onClick={onClose}

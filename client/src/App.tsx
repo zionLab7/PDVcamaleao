@@ -157,7 +157,8 @@ export const App: React.FC = () => {
     payments: PaymentDetail[],
     amountPaid: number,
     change: number,
-    customerName?: string
+    customerName?: string,
+    customerCpf?: string
   ) => {
     if (!currentUser) return;
 
@@ -185,6 +186,7 @@ export const App: React.FC = () => {
         amountPaid,
         change,
         customerName,
+        customerCpf,
       });
 
       setPaymentModalOpen(false);

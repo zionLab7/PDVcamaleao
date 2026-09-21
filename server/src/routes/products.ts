@@ -19,6 +19,11 @@ const productSchema = z.object({
   quickAccess: z.boolean().optional().default(false),
   color: z.string().optional().nullable(),
   active: z.boolean().optional().default(true),
+  ncm: z.string().optional().default('00000000'),
+  cest: z.string().optional().nullable(),
+  cfop: z.string().optional().default('5102'),
+  origin: z.string().optional().default('0'),
+  csosn: z.string().optional().default('102'),
 });
 
 // List products

@@ -26,6 +26,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [stock, setStock] = useState(productToEdit?.stock?.toString() || '10');
   const [minStock, setMinStock] = useState(productToEdit?.minStock?.toString() || '5');
   const [quickAccess, setQuickAccess] = useState<boolean>(productToEdit?.quickAccess || false);
+  const [ncm, setNcm] = useState(productToEdit?.ncm || '22021000');
+  const [cfop, setCfop] = useState(productToEdit?.cfop || '5102');
   const [loading, setLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -57,6 +59,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         setName(res.name);
         if (res.category) setCategory(res.category);
         if (res.unit) setUnit(res.unit as UnitType);
+        if (res.ncm) setNcm(res.ncm);
         sound.playBeep();
         setLookupMessage({
           text: `Produto identificado: "${res.name}" (${res.source || 'Catálogo'})`,
@@ -125,6 +128,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       stock: parseFloat(stock.replace(',', '.')) || 0,
       minStock: parseFloat(minStock.replace(',', '.')) || 0,
       quickAccess,
+      ncm: ncm.trim().replace(/\D/g, '') || '00000000',
+      cfop: cfop.trim() || '5102',
     };
 
     setLoading(true);
@@ -383,6 +388,46 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 onChange={(e) => setMinStock(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* Fiscal Details (NCM & CFOP) */}
+          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                Classificação Fiscal (NFC-e)
+              </span>
+              <span className="text-[10px] text-emerald-700 bg-emerald-100 font-bold px-2 py-0.5 rounded-full">
+                Preenchido Automático
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Código NCM (8 dígitos)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 22021000"
+                  value={ncm}
+                  onChange={(e) => setNcm(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  CFOP
+                </label>
+                <input
+                  type="text"
+                  placeholder="5102"
+                  value={cfop}
+                  onChange={(e) => setCfop(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 

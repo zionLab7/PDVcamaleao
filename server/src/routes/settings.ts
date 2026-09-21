@@ -19,6 +19,16 @@ const settingsSchema = z.object({
   receiptWidth: z.enum(['58mm', '80mm']).optional().default('80mm'),
   receiptFooter: z.string().optional().nullable(),
   enableSound: z.boolean().optional().default(true),
+  
+  // Fiscal / NFC-e
+  enableNfce: z.boolean().optional().default(false),
+  fiscalEnvironment: z.enum(['homologacao', 'producao']).optional().default('homologacao'),
+  stateUf: z.string().optional().default('SP'),
+  stateRegistration: z.string().optional().nullable(),
+  taxRegime: z.string().optional().default('1'),
+  cscId: z.string().optional().nullable(),
+  cscToken: z.string().optional().nullable(),
+  nfceSeries: z.number().int().optional().default(1),
 });
 
 // Get settings

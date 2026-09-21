@@ -23,6 +23,11 @@ export interface Product {
   unit: UnitType;
   quickAccess?: boolean;
   color?: string;
+  ncm?: string;
+  cest?: string;
+  cfop?: string;
+  origin?: string;
+  csosn?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -66,6 +71,14 @@ export interface Sale {
   customerName?: string;
   customerCpf?: string;
   status: 'completed' | 'cancelled';
+  fiscalStatus?: 'none' | 'pending' | 'authorized' | 'rejected' | 'cancelled';
+  nfceNumber?: number;
+  nfceSeries?: number;
+  nfceAccessKey?: string;
+  nfceProtocol?: string;
+  nfceQrCodeUrl?: string;
+  nfceError?: string;
+  nfceIssuedAt?: string;
   cancelledAt?: number;
   cancelledBy?: string;
   synced: boolean;
@@ -103,6 +116,20 @@ export interface StoreSettings {
   receiptWidth: '58mm' | '80mm';
   receiptFooter: string;
   enableSound: boolean;
+  
+  // Fiscal / NFC-e
+  enableNfce?: boolean;
+  fiscalEnvironment?: 'homologacao' | 'producao';
+  stateUf?: string;
+  stateRegistration?: string;
+  taxRegime?: string;
+  cscId?: string;
+  cscToken?: string;
+  certificateOwner?: string;
+  certificateExpiresAt?: string;
+  nfceSeries?: number;
+  lastNfceNumber?: number;
+
   cloudSyncEnabled: boolean;
   cloudStoreId: string;
   cloudApiKey: string;

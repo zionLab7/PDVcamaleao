@@ -6,6 +6,7 @@ export interface BarcodeLookupResult {
   category?: string;
   brand?: string;
   unit?: string;
+  ncm?: string;
   source?: string;
 }
 
@@ -40,6 +41,37 @@ function detectCategory(text: string): string {
   return 'Mercearia';
 }
 
+function detectNcm(name: string, category: string): string {
+  const lower = `${name} ${category}`.toLowerCase();
+
+  if (/(refrigerante|coca|guaraná|fanta|pepsi|sprite|sukita)/.test(lower)) return '22021000';
+  if (/(cerveja|heineken|amstel|brahma|skol|budweiser|stella)/.test(lower)) return '22030000';
+  if (/(água mineral|agua mineral)/.test(lower)) return '22011000';
+  if (/(suco|néctar|nectar)/.test(lower)) return '20098990';
+  if (/(arroz)/.test(lower)) return '10063021';
+  if (/(feijão|feijao)/.test(lower)) return '07133399';
+  if (/(café|cafe)/.test(lower)) return '09012100';
+  if (/(açúcar|acucar)/.test(lower)) return '17019900';
+  if (/(óleo de soja|oleo de soja)/.test(lower)) return '15079011';
+  if (/(leite integral|leite desnatado|leite uht)/.test(lower)) return '04012010';
+  if (/(manteiga)/.test(lower)) return '04051000';
+  if (/(macarrão|macarrao|espaguete)/.test(lower)) return '19021900';
+  if (/(molho de tomate|extrato de tomate)/.test(lower)) return '21032010';
+  if (/(biscoito|bolacha)/.test(lower)) return '19053100';
+  if (/(pão|pao)/.test(lower)) return '19059090';
+  if (/(detergente)/.test(lower)) return '34022000';
+  if (/(sabão em pó|sabao em po)/.test(lower)) return '34029031';
+  if (/(sabonete)/.test(lower)) return '34011190';
+  if (/(papel higiênico|papel higienico)/.test(lower)) return '48181000';
+
+  if (category === 'Bebidas') return '22029900';
+  if (category === 'Limpeza') return '34029039';
+  if (category === 'Higiene') return '33051000';
+  if (category === 'Laticínios') return '04061010';
+
+  return '21069090'; // Preparações alimentícias diversas (NCM padrão)
+}
+
 export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResult> {
   const cleanBarcode = barcode.trim().replace(/\D/g, '');
 
@@ -58,6 +90,7 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
         name: true,
         category: true,
         unit: true,
+        ncm: true,
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -68,6 +101,7 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
         name: existing.name,
         category: existing.category,
         unit: existing.unit,
+        ncm: existing.ncm && existing.ncm !== '00000000' ? existing.ncm : detectNcm(existing.name, existing.category),
         source: 'Catálogo Compartilhado PDV'
       };
     }
@@ -113,6 +147,7 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
             brand,
             category,
             unit: 'UN',
+            ncm: detectNcm(fullName, category),
             source: 'Open Food Facts'
           };
         }
