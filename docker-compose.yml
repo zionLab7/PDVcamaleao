@@ -1,0 +1,68 @@
+services:
+  # 1. PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: pdv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pdv_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pdv_secret_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-pdvcamaleao}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pdv_admin} -d ${POSTGRES_DB:-pdvcamaleao}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Node.js Backend API
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: pdv_server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pdv_admin}:${POSTGRES_PASSWORD:-pdv_secret_pass_2026}@db:5432/${POSTGRES_DB:-pdvcamaleao}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-pdv_camaleao_jwt_secret_change_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-pdv_camaleao_jwt_refresh_secret_change_in_production}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    networks:
+      - internal
+
+  # 3. Web Frontend (Nginx SPA + Reverse Proxy)
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: pdv_client
+    restart: unless-stopped
+    depends_on:
+      - server
+    networks:
+      - internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.pdv-camaleao.rule=Host(`${DOMAIN:-app.distribuidoragpbrasil.com.br}`)"
+      - "traefik.http.routers.pdv-camaleao.entrypoints=websecure"
+      - "traefik.http.routers.pdv-camaleao.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pdv-camaleao.loadbalancer.server.port=80"
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
+  traefik:
+    external: true

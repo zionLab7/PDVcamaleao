@@ -1,0 +1,166 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  document  String?
+  phone     String?
+  plan      String   @default("pro")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  products      Product[]
+  sales         Sale[]
+  cashRegisters CashRegister[]
+  storeSetting  StoreSetting?
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  username  String
+  role      String   @default("cashier") // admin, manager, cashier
+  pin       String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales         Sale[]
+  cashMovements CashMovement[]
+
+  @@unique([tenantId, username])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  barcode     String?
+  category    String   @default("Mercearia")
+  unit        String   @default("UN") // UN, KG, LT, PC, CX
+  costPrice   Float    @default(0)
+  sellPrice   Float
+  stock       Float    @default(0)
+  minStock    Float    @default(5)
+  quickAccess Boolean  @default(false)
+  color       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  saleItems   SaleItem[]
+}
+
+model Sale {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sequenceNumber Int      @default(1)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  operatorName   String   @default("Operador")
+  customerName   String?
+  customerCpf    String?
+  subtotal       Float    @default(0)
+  discount       Float    @default(0)
+  total          Float
+  amountPaid     Float    @default(0)
+  change         Float    @default(0)
+  status         String   @default("completed") // completed, cancelled
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          SaleItem[]
+  payments       SalePayment[]
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  tenantId    String
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Float
+  unitPrice   Float
+  discount    Float    @default(0)
+  total       Float
+  createdAt   DateTime @default(now())
+}
+
+model SalePayment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  method    String   // dinheiro, pix, debito, credito, fiado, multiplo
+  amount    Float
+  details   Json?
+  createdAt DateTime @default(now())
+}
+
+model CashRegister {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  isOpen         Boolean  @default(true)
+  openedAt       DateTime @default(now())
+  closedAt       DateTime?
+  openedBy       String?
+  initialAmount  Float    @default(0)
+  currentBalance Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  movements      CashMovement[]
+}
+
+model CashMovement {
+  id             String       @id @default(uuid())
+  tenantId       String
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  operatorName   String       @default("Operador")
+  type           String       // opening, inflow, outflow, closing
+  amount         Float
+  reason         String
+  createdAt      DateTime     @default(now())
+}
+
+model StoreSetting {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  storeName     String   @default("PDV Camaleão")
+  tradeName     String?  @default("")
+  document      String?  @default("")
+  phone         String?  @default("")
+  address       String?  @default("")
+  city          String?  @default("")
+  pixKey        String?  @default("")
+  pixReceiver   String?  @default("")
+  pixCity       String?  @default("")
+  receiptWidth  String   @default("80mm") // 58mm, 80mm
+  receiptFooter String?  @default("Obrigado pela preferência! Volte sempre!")
+  enableSound   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

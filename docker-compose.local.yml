@@ -1,0 +1,55 @@
+# docker-compose.local.yml
+# Para testes locais sem Traefik
+# Uso: docker compose -f docker-compose.local.yml up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pdv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pdv_admin
+      POSTGRES_PASSWORD: pdv_secret_pass_2026
+      POSTGRES_DB: pdvcamaleao
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdv_admin -d pdvcamaleao"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: pdv_server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://pdv_admin:pdv_secret_pass_2026@db:5432/pdvcamaleao?schema=public
+      JWT_SECRET: pdv_camaleao_jwt_secret_dev
+      JWT_REFRESH_SECRET: pdv_camaleao_jwt_refresh_secret_dev
+      CORS_ORIGIN: "*"
+    ports:
+      - "3001:3001"
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: pdv_client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+    driver: local

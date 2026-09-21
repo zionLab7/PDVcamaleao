@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.npm
+
+# Build outputs
+client/dist/
+server/dist/
+
+# Environment files
+.env
+server/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Electron (deprecated - removed)
+electron/
+release/
+build/
+*.dmg
+*.exe
+*.AppImage
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+Thumbs.db
+
+# Prisma
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# Gemini/Antigravity
+.gemini/
