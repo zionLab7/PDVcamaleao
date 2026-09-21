@@ -327,3 +327,25 @@ export const fiscal = {
     }>(`/fiscal/danfe/${saleId}`),
 };
 
+// ─── Categories ──────────────────────────────────────────────────────
+
+export const categories = {
+  list: () => request<Array<{ id: string; name: string; color?: string }>>('/categories'),
+  
+  create: (data: { name: string; color?: string }) =>
+    request<{ id: string; name: string; color?: string }>('/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  update: (id: string, data: { name: string; color?: string }) =>
+    request<{ id: string; name: string; color?: string }>(`/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  delete: (id: string) =>
+    request(`/categories/${id}`, { method: 'DELETE' }),
+};
+
+

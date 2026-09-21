@@ -10,6 +10,7 @@ import settingsRoutes from './routes/settings';
 import reportsRoutes from './routes/reports';
 import adminRoutes from './routes/admin';
 import fiscalRoutes from './routes/fiscal';
+import categoriesRoutes from './routes/categories';
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fiscal', fiscalRoutes);
+app.use('/api/categories', categoriesRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

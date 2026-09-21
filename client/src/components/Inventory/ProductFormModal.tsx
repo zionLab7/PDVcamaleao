@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { X, Sparkles, Package, Barcode, DollarSign, Loader2, Search, CheckCircle2, Globe } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Sparkles, Package, Barcode, DollarSign, Loader2, Search, CheckCircle2, Globe, Tag, Plus, Check } from 'lucide-react';
 import { Product, UnitType } from '../../types';
 import * as api from '../../services/api';
 import { sound } from '../../services/audio';
@@ -20,6 +20,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [name, setName] = useState(productToEdit?.name || '');
   const [barcode, setBarcode] = useState(productToEdit?.barcode || '');
   const [category, setCategory] = useState(productToEdit?.category || 'Mercearia');
+  const [categoriesList, setCategoriesList] = useState<Array<{ id: string; name: string; color?: string }>>([]);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [unit, setUnit] = useState<UnitType>(productToEdit?.unit || 'UN');
   const [costPrice, setCostPrice] = useState(productToEdit?.costPrice?.toString() || '0');
   const [sellPrice, setSellPrice] = useState(productToEdit?.sellPrice?.toString() || '');
@@ -33,6 +37,46 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [lookupMessage, setLookupMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   const sellPriceInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const data = await api.categories.list();
+        setCategoriesList(data);
+        if (!productToEdit && data.length > 0) {
+          const hasSelected = data.some((c: any) => c.name.toLowerCase() === category.toLowerCase());
+          if (!hasSelected) {
+            setCategory(data[0].name);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar categorias:', err);
+      }
+    };
+    loadCategories();
+  }, [productToEdit]);
+
+  const handleQuickAddCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    setCreatingCategory(true);
+    try {
+      const created = await api.categories.create({ name: trimmed });
+      setCategoriesList((prev) => {
+        const exists = prev.some((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+        return exists ? prev : [...prev, created];
+      });
+      setCategory(created.name);
+      setNewCategoryName('');
+      setShowNewCategory(false);
+      sound.playSuccess();
+    } catch (err: any) {
+      sound.playAlert();
+      alert(err.message || 'Erro ao criar categoria.');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
 
   // Generate a random internal EAN-style barcode
   const handleGenerateBarcode = () => {
@@ -266,27 +310,73 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           </div>
 
           {/* Category & Unit */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Categoria
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                <option value="Mercearia">Mercearia</option>
-                <option value="Bebidas">Bebidas</option>
-                <option value="Padaria">Padaria & Confeitaria</option>
-                <option value="Hortifrúti">Hortifrúti / Feira</option>
-                <option value="Açougue">Açougue & Carnes</option>
-                <option value="Laticínios">Laticínios & Frios</option>
-                <option value="Limpeza">Limpeza</option>
-                <option value="Higiene">Higiene & Cuidados</option>
-                <option value="Doces & Snacks">Doces & Snacks</option>
-                <option value="Outros">Outros</option>
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                  <Tag className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Categoria *</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowNewCategory(!showNewCategory)}
+                  className="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center space-x-0.5"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{showNewCategory ? 'Listar' : '+ Nova'}</span>
+                </button>
+              </div>
+
+              {showNewCategory ? (
+                <div className="flex items-center space-x-1">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="Nome da categoria..."
+                    className="flex-1 px-3 py-2 bg-white border border-emerald-400 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleQuickAddCategory();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickAddCategory}
+                    disabled={creatingCategory || !newCategoryName.trim()}
+                    className="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center space-x-1 shadow-sm"
+                    title="Criar e selecionar categoria"
+                  >
+                    {creatingCategory ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  {/* If the current category isn't in the list, keep it visible */}
+                  {category && !categoriesList.some((c) => c.name.toLowerCase() === category.toLowerCase()) && (
+                    <option value={category}>{category}</option>
+                  )}
+                  {categoriesList.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name}
+                    </option>
+                  ))}
+                  {categoriesList.length === 0 && !category && (
+                    <option value="Geral">Geral</option>
+                  )}
+                </select>
+              )}
             </div>
 
             <div>

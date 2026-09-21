@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -10,12 +10,14 @@ import {
   ArrowUpCircle, 
   Check, 
   Filter,
-  EyeOff
+  EyeOff,
+  Tag
 } from 'lucide-react';
 import { Product, User } from '../../types';
 import * as api from '../../services/api';
 import { auth } from '../../services/auth';
 import { sound } from '../../services/audio';
+import { CategoryManagerModal } from './CategoryManagerModal';
 
 interface InventoryViewProps {
   products: Product[];
@@ -37,12 +39,35 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [filterLowStockOnly, setFilterLowStockOnly] = useState<boolean>(false);
   const [quickStockId, setQuickStockId] = useState<string | null>(null);
   const [quickStockAmount, setQuickStockAmount] = useState<string>('10');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [registeredCategories, setRegisteredCategories] = useState<Array<{ id: string; name: string; color?: string }>>([]);
 
   const canViewCosts = auth.canViewCostsAndProfit(currentUser);
   const canManage = auth.canManageStock(currentUser);
 
-  // Extract unique categories
-  const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
+  const loadRegisteredCategories = async () => {
+    try {
+      const data = await api.categories.list();
+      setRegisteredCategories(data);
+    } catch (err) {
+      console.error('Erro ao listar categorias no estoque:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadRegisteredCategories();
+  }, []);
+
+  // Extract unique categories (registered + existing in products)
+  const categories = [
+    'all',
+    ...Array.from(
+      new Set([
+        ...registeredCategories.map((c) => c.name),
+        ...products.map((p) => p.category),
+      ])
+    ).filter(Boolean),
+  ];
 
   // Filter products
   const filteredProducts = products.filter((product) => {
@@ -108,13 +133,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
 
         {canManage && (
-          <button
-            onClick={onOpenNewProduct}
-            className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 flex items-center space-x-2 transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Cadastrar Novo Produto</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="py-2.5 px-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl shadow-sm flex items-center space-x-1.5 transition-all active:scale-95"
+              title="Gerenciar e personalizar categorias de produtos"
+            >
+              <Tag className="w-4 h-4 text-slate-500" />
+              <span>Categorias</span>
+            </button>
+
+            <button
+              onClick={onOpenNewProduct}
+              className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 flex items-center space-x-2 transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Cadastrar Novo Produto</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -345,6 +381,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Category Manager Modal */}
+      {isCategoryModalOpen && (
+        <CategoryManagerModal
+          onClose={() => setIsCategoryModalOpen(false)}
+          onCategoriesChanged={() => {
+            loadRegisteredCategories();
+            onRefresh?.();
+          }}
+        />
+      )}
 
     </div>
   );

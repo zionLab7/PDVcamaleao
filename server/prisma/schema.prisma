@@ -25,6 +25,7 @@ model Tenant {
   sales         Sale[]
   cashRegisters CashRegister[]
   storeSetting  StoreSetting?
+  categories    Category[]
 }
 
 model User {
@@ -194,3 +195,16 @@ model StoreSetting {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 }
+
+model Category {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  color     String?  @default("#10b981")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+}
+
