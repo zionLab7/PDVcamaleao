@@ -1,97 +1,101 @@
-# 🚀 Como Subir o PDV Camaleão no Servidor (Docker & Portainer)
+# PDV Camaleão - Guia de Deploy
 
-O PDV Camaleão foi convertido em um **Web App SaaS Multi-Tenant**. Cada comércio tem seus dados isolados e acessa via navegador.
+## 📋 Pré-requisitos
 
----
-
-## 📦 Estrutura dos Serviços (Docker Compose)
-
-O sistema é composto por 3 containers orquestrados:
-1. **`db`**: PostgreSQL 16 com volume persistente para dados seguros.
-2. **`server`**: API Node.js + Express + Prisma ORM (porta interna 3001).
-3. **`client`**: Frontend Web React 19 compilado servido via Nginx (porta 80). Faz proxy transparente de `/api/` para o container do backend.
+- Docker + Docker Compose
+- Traefik configurado como reverse proxy
+- DNS apontando `app.distribuidoragpbrasil.com.br` para o servidor
 
 ---
 
-## 🛠️ Opção 1: Deploy Direto via Terminal (SSH no Servidor)
+## 🚀 Deploy via Portainer (Produção)
 
-1. Envie a pasta do projeto para o seu servidor VPS (ex: via Git ou rsync/scp):
-   ```bash
-   git clone <seu-repositorio> pdv-camaleao
-   cd pdv-camaleao
-   ```
+### 1. Criar Stack no Portainer
+1. Acesse Portainer → **Stacks** → **Add Stack**
+2. Selecione **Repository** e aponte para o repositório GitHub
+3. O Portainer usará o `docker-compose.yml` da raiz automaticamente
 
-2. Suba os containers com um único comando:
-   ```bash
-   docker compose up -d --build
-   ```
+### 2. Variáveis de Ambiente (Environment Variables)
+Configure no Portainer antes de fazer deploy:
 
-3. O container do backend executa automaticamente o **`prisma db push`** e o **`seed`** inicial com os dados da loja de demonstração.
+| Variável | Descrição | Exemplo |
+|---|---|---|
+| `DOMAIN` | Domínio/subdomínio do app | `app.distribuidoragpbrasil.com.br` |
+| `POSTGRES_USER` | Usuário do PostgreSQL | `pdv_admin` |
+| `POSTGRES_PASSWORD` | **Senha segura** do PostgreSQL | `SuaSenhaSegura123!` |
+| `POSTGRES_DB` | Nome do banco | `pdvcamaleao` |
+| `JWT_SECRET` | Chave secreta JWT (gere aleatória) | `abc123def456...` |
+| `JWT_REFRESH_SECRET` | Chave refresh JWT (gere aleatória) | `xyz789ghi012...` |
+| `CORS_ORIGIN` | URL do frontend | `https://app.distribuidoragpbrasil.com.br` |
 
-4. Acesse no navegador:
-   ```
-   http://IP_DO_SEU_SERVIDOR/
-   ```
+### 3. Rede Traefik
+Certifique-se de que a rede `traefik` existe:
+```bash
+docker network create traefik
+```
 
----
-
-## 🐳 Opção 2: Deploy no Portainer (Stacks)
-
-1. Abra seu painel do **Portainer**.
-2. Vá em **Stacks** → **Add stack**.
-3. Escolha **Repository** (se o projeto estiver no GitHub/GitLab) ou cole o conteúdo do `docker-compose.yml` na aba **Web editor**.
-4. Configure as variáveis de ambiente opcionais (ou use os padrões seguros):
-   - `POSTGRES_USER`: `pdv_admin`
-   - `POSTGRES_PASSWORD`: `uma_senha_forte_aqui`
-   - `POSTGRES_DB`: `pdvcamaleao`
-   - `JWT_SECRET`: `sua_chave_jwt_secreta`
-   - `PORT`: `80`
-5. Clique em **Deploy the stack**.
+### 4. Deploy
+Clique em **Deploy the stack** no Portainer.
 
 ---
 
-## 🔑 Credenciais Iniciais de Demonstração (Seed)
+## 🔧 Teste Local
 
-O banco já vem inicializado com uma loja pronta para uso:
+Para testar localmente sem Traefik:
 
-### 1. Login da Loja (Camada de Empresa)
-- **E-mail**: `demo@pdvcamaleao.com`
-- **Senha**: `demo123`
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
 
-### 2. Operadores de Caixa (Camada de Caixa - PIN)
-- **Dono (Carlos Oliveira)**: PIN `1234` (Acesso completo a estoque, relatórios e ajustes)
-- **Gerente (Mariana Santos)**: PIN `2222` (Operações e estoque)
-- **Caixa (João Pedro)**: PIN `0000` (Frente de caixa rápida)
+Acesse: `http://localhost`
+
+**Login demo:**
+- Email: `demo@pdvcamaleao.com`
+- Senha: `demo123`
+
+**PINs dos operadores:**
+- Admin (Carlos): `1234`
+- Gerente (Mariana): `2222`
+- Caixa (João): `0000`
+
+### Parar
+
+```bash
+docker compose -f docker-compose.local.yml down
+```
+
+### Limpar dados (reset total)
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+```
 
 ---
 
-## 👥 Como Cadastrar um Novo Cliente / Loja
+## 📁 Estrutura do Projeto
 
-Como definido, o cadastro de novos clientes é feito internamente pela sua equipe administrativa.
+```
+PDVCamaleao/
+├── client/              # Frontend React + Vite + Tailwind
+│   ├── Dockerfile       # Build multi-stage (Vite → Nginx)
+│   ├── nginx.conf       # SPA routing + proxy /api/ → server
+│   └── src/
+├── server/              # Backend Node.js + Express + Prisma
+│   ├── Dockerfile       # Build multi-stage (TypeScript → Node)
+│   ├── prisma/
+│   │   └── schema.prisma
+│   └── src/
+├── docker-compose.yml       # Produção (com Traefik)
+├── docker-compose.local.yml # Teste local (com portas expostas)
+├── .env.example             # Template de variáveis de ambiente
+└── DEPLOY.md                # Este guia
+```
 
-Para criar um novo cliente no banco de dados, você pode:
+---
 
-1. **Via script (terminal no servidor)**:
-   ```bash
-   docker exec -it pdv_server npx ts-node -e '
-   const { PrismaClient } = require("@prisma/client");
-   const bcrypt = require("bcrypt");
-   const prisma = new PrismaClient();
-   async function addStore(name, email, pass) {
-     const hash = await bcrypt.hash(pass, 12);
-     const pin = await bcrypt.hash("1234", 10);
-     const t = await prisma.tenant.create({
-       data: {
-         name, email, password: hash,
-         storeSetting: { create: { storeName: name } },
-         users: { create: [{ name: "Dono", role: "admin", pin }] },
-         cashRegisters: { create: [{ isOpen: true, currentBalance: 0 }] }
-       }
-     });
-     console.log("Loja criada! ID:", t.id);
-   }
-   addStore("Padaria Estrela", "padaria@estrela.com", "senha123");
-   '
-   ```
+## 🔒 Segurança
 
-2. **Ou conectando diretamente no PostgreSQL** usando o DBeaver / pgAdmin / TablePlus apontando para a porta 5432 do seu servidor.
+- **Nunca** use as senhas/chaves padrão em produção
+- Gere JWT secrets aleatórios: `openssl rand -hex 32`
+- O banco PostgreSQL **não** expõe porta externamente no compose de produção
+- HTTPS é gerenciado automaticamente pelo Traefik + Let's Encrypt
