@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Sparkles, Package, Barcode, DollarSign, Loader2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Sparkles, Package, Barcode, DollarSign, Loader2, Search, CheckCircle2, Globe } from 'lucide-react';
 import { Product, UnitType } from '../../types';
 import * as api from '../../services/api';
 import { sound } from '../../services/audio';
@@ -27,12 +27,68 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [minStock, setMinStock] = useState(productToEdit?.minStock?.toString() || '5');
   const [quickAccess, setQuickAccess] = useState<boolean>(productToEdit?.quickAccess || false);
   const [loading, setLoading] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const sellPriceInputRef = useRef<HTMLInputElement>(null);
 
   // Generate a random internal EAN-style barcode
   const handleGenerateBarcode = () => {
     const randomCode = '789' + Math.floor(1000000000 + Math.random() * 9000000000).toString();
     setBarcode(randomCode);
+    setLookupMessage(null);
     sound.playBeep();
+  };
+
+  // Lookup product info via external/shared database
+  const handleLookupBarcode = async (codeToSearch?: string) => {
+    const targetCode = (codeToSearch || barcode).trim().replace(/\D/g, '');
+    if (!targetCode || targetCode.length < 6) {
+      setLookupMessage({ text: 'Digite ao menos 6 dígitos para consultar.', type: 'error' });
+      return;
+    }
+
+    setIsLookingUp(true);
+    setLookupMessage(null);
+
+    try {
+      const res = await api.products.lookupBarcode(targetCode);
+      if (res.found && res.name) {
+        setName(res.name);
+        if (res.category) setCategory(res.category);
+        if (res.unit) setUnit(res.unit as UnitType);
+        sound.playBeep();
+        setLookupMessage({
+          text: `Produto identificado: "${res.name}" (${res.source || 'Catálogo'})`,
+          type: 'success',
+        });
+        setTimeout(() => {
+          sellPriceInputRef.current?.focus();
+        }, 150);
+      } else {
+        setLookupMessage({
+          text: 'Produto não encontrado no catálogo externo. Preencha o nome manualmente.',
+          type: 'info',
+        });
+      }
+    } catch (err) {
+      setLookupMessage({
+        text: 'Não foi possível consultar a base externa no momento.',
+        type: 'error',
+      });
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  const handleBarcodeChange = (newVal: string) => {
+    setBarcode(newVal);
+    setLookupMessage(null);
+    const clean = newVal.replace(/\D/g, '');
+    // Auto lookup se tiver 13 dígitos de padrão EAN e o nome ainda estiver vazio
+    if (clean.length === 13 && !name.trim() && !isEditing) {
+      handleLookupBarcode(clean);
+    }
   };
 
   // Realtime profit margin calculation
@@ -120,23 +176,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
           
-          {/* Product Name */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Nome do Produto / Descrição *
-            </label>
-            <input
-              type="text"
-              required
-              autoFocus
-              placeholder="Ex: Arroz Camil Tipo 1 - 5kg"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-          </div>
-
-          {/* Barcode with Quick Generator */}
+          {/* Barcode / EAN with Instant Online Lookup */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-700 flex items-center space-x-1">
@@ -149,16 +189,74 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 className="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center space-x-1"
               >
                 <Sparkles className="w-3 h-3" />
-                <span>Gerar Código Automático</span>
+                <span>Gerar Automático</span>
               </button>
             </div>
+            
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                required
+                autoFocus={!isEditing}
+                placeholder="Bipe com o leitor ou digite o EAN (ex: 7891000100101)"
+                value={barcode}
+                onChange={(e) => handleBarcodeChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleLookupBarcode();
+                  }
+                }}
+                className="w-full pl-3.5 pr-28 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleLookupBarcode()}
+                disabled={isLookingUp || !barcode.trim()}
+                className="absolute right-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-sm"
+                title="Buscar nome e categoria automaticamente na internet"
+              >
+                {isLookingUp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Search className="w-3.5 h-3.5" />
+                )}
+                <span>{isLookingUp ? 'Buscando...' : 'Buscar'}</span>
+              </button>
+            </div>
+
+            {/* Lookup status feedback banner */}
+            {lookupMessage && (
+              <div className={`mt-2 p-2.5 rounded-xl text-xs flex items-center space-x-2 transition-all ${
+                lookupMessage.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : lookupMessage.type === 'info'
+                  ? 'bg-blue-50 border border-blue-200 text-blue-800'
+                  : 'bg-rose-50 border border-rose-200 text-rose-800'
+              }`}>
+                {lookupMessage.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Globe className="w-4 h-4 text-blue-600 shrink-0" />
+                )}
+                <span className="font-semibold">{lookupMessage.text}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Product Name */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Nome do Produto / Descrição *
+            </label>
             <input
               type="text"
               required
-              placeholder="Ex: 7891000100101"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              autoFocus={isEditing}
+              placeholder="Ex: Arroz Camil Tipo 1 - 5kg"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
             />
           </div>
 
@@ -234,6 +332,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600">R$</span>
                   <input
+                    ref={sellPriceInputRef}
                     type="text"
                     required
                     placeholder="0,00"

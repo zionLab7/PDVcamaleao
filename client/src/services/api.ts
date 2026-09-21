@@ -167,6 +167,16 @@ export const products = {
       method: 'PATCH',
       body: JSON.stringify({ quantity }),
     }),
+  
+  lookupBarcode: (barcode: string) =>
+    request<{
+      found: boolean;
+      name?: string;
+      category?: string;
+      brand?: string;
+      unit?: string;
+      source?: string;
+    }>(`/products/lookup-barcode/${encodeURIComponent(barcode)}`),
 };
 
 // ─── Sales ───────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { authMiddleware } from '../middleware/auth';
+import { lookupBarcode } from '../services/barcodeLookup';
 
 const router = Router();
 router.use(authMiddleware);
@@ -30,6 +31,17 @@ router.get('/', async (req, res) => {
     res.json(products);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar produtos' });
+  }
+});
+
+// Lookup barcode details from external/shared catalogs
+router.get('/lookup-barcode/:barcode', async (req, res) => {
+  try {
+    const { barcode } = req.params;
+    const result = await lookupBarcode(barcode);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao consultar código de barras' });
   }
 });
 
