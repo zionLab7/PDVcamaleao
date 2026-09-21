@@ -12,6 +12,7 @@
     "build:client": "npm run build -w client",
     "db:migrate": "npm run db:migrate -w server",
     "db:seed": "npm run db:seed -w server",
+    "create:tenant": "npm run create:tenant -w server",
     "start": "npm run start -w server"
   },
   "workspaces": [

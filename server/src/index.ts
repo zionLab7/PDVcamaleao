@@ -8,6 +8,7 @@ import cashRegisterRoutes from './routes/cashRegister';
 import usersRoutes from './routes/users';
 import settingsRoutes from './routes/settings';
 import reportsRoutes from './routes/reports';
+import adminRoutes from './routes/admin';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use('/api/cash-register', cashRegisterRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
