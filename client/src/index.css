@@ -41,34 +41,116 @@
   letter-spacing: -0.05em;
 }
 
-/* Print Optimization for Thermal POS Receipts (58mm / 80mm) */
+/* The receipt portal is mounted directly on body, outside the scrolling modal. */
+#printable-receipt {
+  display: none;
+}
+
 @media print {
-  /* Hide all UI elements */
-  body * {
-    visibility: hidden;
+  @page {
+    margin: 0;
+    /* Keep the roll length supplied by the printer driver (including long sales). */
+    size: auto;
   }
-  
-  /* Show only printable receipt */
-  #printable-receipt, #printable-receipt * {
-    visibility: visible;
+
+  body:has(> #printable-receipt) {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body:has(> #printable-receipt) > :not(#printable-receipt) {
+    display: none !important;
   }
 
   #printable-receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 2mm 4mm;
-    background: white !important;
-    color: black !important;
-    font-family: 'Courier New', Courier, monospace !important;
-    font-size: 12px !important;
-    line-height: 1.2 !important;
+    display: block !important;
+    position: static !important;
+    box-sizing: border-box !important;
+    /* 58 mm roll: 48 mm of content, within common 384-dot print heads. */
+    width: 58mm !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 2mm 5mm !important;
+    background: #fff !important;
   }
 
-  @page {
-    margin: 0;
-    size: auto;
+  #printable-receipt[data-paper-width="80mm"] {
+    width: 80mm !important;
+    padding-right: 4mm !important;
+    padding-left: 4mm !important;
+  }
+
+  /* Apply to EVERY descendant: screen gray utilities otherwise survive inheritance
+     and get dithered into faint dots by monochrome thermal printer drivers. */
+  #printable-receipt,
+  #printable-receipt * {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    border-color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #printable-receipt * {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    overflow-wrap: anywhere;
+  }
+
+  #printable-receipt .receipt-title,
+  #printable-receipt .receipt-total,
+  #printable-receipt .receipt-total * {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+  }
+
+  #printable-receipt .flex {
+    flex-wrap: wrap;
+    column-gap: 2mm;
+  }
+
+  /* Date, operator and customer do not fit side by side on a 58 mm roll. */
+  #printable-receipt .receipt-meta .flex {
+    display: block;
+  }
+
+  #printable-receipt .receipt-meta .flex > span {
+    display: block;
+  }
+
+  #printable-receipt .receipt-amount {
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    margin-left: auto;
+  }
+
+  /* Print complete product descriptions instead of the screen's one-line clamp. */
+  #printable-receipt .line-clamp-1 {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: initial;
+  }
+
+  #printable-receipt img {
+    display: block;
+    height: auto;
+    image-rendering: pixelated;
+    break-inside: avoid;
   }
 }
