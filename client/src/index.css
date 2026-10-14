@@ -70,18 +70,18 @@
     display: block !important;
     position: static !important;
     box-sizing: border-box !important;
-    /* 58 mm roll: 48 mm of content, within common 384-dot print heads. */
-    width: 58mm !important;
+    /* The WHOLE box must fit the print head, not the physical roll. Drivers can
+       add their own non-printable margins; a 58 mm box can still be cropped. */
+    width: 48mm !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 2mm 5mm !important;
+    /* Keep 1 mm safety padding INSIDE the 48 mm printable box. */
+    padding: 2mm 1mm !important;
     background: #fff !important;
   }
 
   #printable-receipt[data-paper-width="80mm"] {
-    width: 80mm !important;
-    padding-right: 4mm !important;
-    padding-left: 4mm !important;
+    width: 72mm !important;
   }
 
   /* Apply to EVERY descendant: screen gray utilities otherwise survive inheritance

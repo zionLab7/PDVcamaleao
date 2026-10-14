@@ -10,8 +10,19 @@ com as classes cinza da tela, em tamanhos de 8–10 px. Drivers monocromáticos 
 transformar esses tons em pontos, tornando o texto fraco. A impressão agora usa preto
 em todos os elementos, fonte Arial de no mínimo 11 px e títulos de 14 px.
 
-A seleção de bobina agora determina a largura em milímetros: 58 mm com 48 mm de conteúdo
-e 80 mm com 72 mm de conteúdo. O recibo impresso fica diretamente no `body`, fora do
+A seleção de bobina determina a largura do bloco completo: bobina de 58 mm usa um bloco
+de **48 mm**, e bobina de 80 mm usa um bloco de **72 mm**. Esses limites incluem uma
+folga interna de 1 mm de cada lado (46/70 mm para texto). A largura física da bobina
+não é a largura imprimível. Usar um bloco de 58 mm, mesmo com 48 mm de conteúdo,
+deslocava o conteúdo para a direita e podia cortar os valores em drivers com área
+útil de 48 mm. O bloco também se adapta se o driver informar uma área ainda menor.
+
+O seletor **Bobina para esta impressão**, ao lado dos botões, permite conferir e alterar
+58/80 mm antes de imprimir. Ele começa com a configuração salva da loja; a alteração
+vale para o recibo aberto. Para manter a preferência nos próximos recibos, salve-a
+em Configurações. O botão de impressão também exibe a largura selecionada.
+
+O recibo impresso fica diretamente no `body`, fora do
 modal, para evitar os limites de altura e os cortes dos contêineres de rolagem.
 Descrições completas podem ocupar várias linhas. Prévia e impressão usam o mesmo conteúdo.
 
@@ -27,7 +38,8 @@ Descrições completas podem ocupar várias linhas. Prévia e impressão usam o 
    docker compose up -d --no-deps client
    ```
 2. Recarregue o aplicativo no computador do caixa para buscar os arquivos novos.
-3. Em Configurações, selecione a bobina de **58 mm** e salve.
+3. Em Configurações, selecione a bobina de **58 mm** e salve. No recibo, confirme que
+   **Bobina para esta impressão** e o botão **Imprimir Cupom (58 mm)** mostram 58 mm.
 4. Ao imprimir, selecione a térmica e o papel de **58 mm** no driver. Use escala **100%**,
    margens **nenhuma** e desative cabeçalhos/rodapés do navegador. Não use ajuste para A4.
    O comprimento da bobina/página é controlado pelo driver; o aplicativo não fixa uma
@@ -51,3 +63,4 @@ npm run build:client
 Os testes usam o componente real em Chromium, nas duas larguras, com e sem dados fiscais,
 e vendas de 60 itens. Verificam contraste, tamanho mínimo, ausência de texto fora da área
 útil, totais, rodapé, QR Code e isolamento do modal, sem depender do banco ou da SEFAZ.
+Também simulam áreas úteis estreitas de 44/48 mm e a troca de 80 para 58 mm antes de imprimir.

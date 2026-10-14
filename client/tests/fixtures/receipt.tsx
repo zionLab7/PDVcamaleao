@@ -39,5 +39,7 @@ const sale: Sale = {
   nfceQrCodeUrl: fiscal ? 'https://example.com/nfce?chave=12345678901234567890123456789012345678901234' : undefined,
 };
 createRoot(document.getElementById('root')!).render(
-  <ReceiptModal sale={sale} settings={settings} onClose={() => {}} onNewSale={() => {}} />
+  <ReceiptModal sale={sale} settings={settings} onClose={() => {}} onNewSale={() => {
+    document.body.dataset.newSales = String(Number(document.body.dataset.newSales || 0) + 1);
+  }} />
 );

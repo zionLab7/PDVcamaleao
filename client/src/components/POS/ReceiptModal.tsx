@@ -30,7 +30,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onNewSale,
 }) => {
-  const is80mm = settings.receiptWidth === '80mm';
+  const [printWidth, setPrintWidth] = useState<'58mm' | '80mm'>(settings.receiptWidth);
+  const is80mm = printWidth === '80mm';
+
+  useEffect(() => {
+    setPrintWidth(settings.receiptWidth);
+  }, [settings.receiptWidth]);
 
   // Fiscal emission states
   const [fiscalStatus, setFiscalStatus] = useState<'none' | 'pending' | 'authorized' | 'rejected'>(
@@ -92,6 +97,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   // Keyboard shortcut: Enter starts new sale, Esc closes
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Choosing the paper size with Enter must not start a new sale.
+      if (e.target instanceof HTMLSelectElement) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         onNewSale();
@@ -390,13 +397,28 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
             )}
 
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <label htmlFor="receipt-paper-width" className="font-bold text-slate-700">
+                Bobina para esta impressão
+              </label>
+              <select
+                id="receipt-paper-width"
+                value={printWidth}
+                onChange={(event) => setPrintWidth(event.target.value as '58mm' | '80mm')}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
+              >
+                <option value="58mm">58 mm</option>
+                <option value="80mm">80 mm</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handlePrint}
                 className="py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow"
               >
                 <Printer className="w-4 h-4 text-emerald-400" />
-                <span>{isFiscalAuthorized ? 'Imprimir DANFE NFC-e' : 'Imprimir Cupom'}</span>
+                <span>{isFiscalAuthorized ? 'Imprimir DANFE NFC-e' : 'Imprimir Cupom'} ({is80mm ? '80' : '58'} mm)</span>
               </button>
 
               <button
