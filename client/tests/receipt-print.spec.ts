@@ -1,4 +1,23 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function mockPrinter(page: Page) {
+  await page.addInitScript(() => {
+    const hooked = new WeakSet<HTMLIFrameElement>();
+    new MutationObserver(() => {
+      for (const frame of document.querySelectorAll<HTMLIFrameElement>('iframe[data-thermal-print]')) {
+        if (hooked.has(frame)) continue;
+        hooked.add(frame);
+        const install = () => {
+          if (frame.contentWindow) frame.contentWindow.print = () => {
+            document.body.dataset.printedWidth = frame.dataset.paperWidth;
+          };
+        };
+        install();
+        frame.addEventListener('load', install);
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+}
 
 for (const width of [58, 80]) {
   for (const fiscal of [false, true]) {
@@ -51,8 +70,8 @@ for (const width of [58, 80]) {
       expect(layout.position).toBe('static');
       // Include all padding in the physical limit. The previous 58 mm box had
       // 48 mm content shifted 5 mm right, beyond a 48 mm thermal print head.
-      expect(layout.width).toBeCloseTo((width === 58 ? 48 : 72) * 96 / 25.4, 1);
-      expect(layout.contentWidth).toBeCloseTo((width === 58 ? 46 : 70) * 96 / 25.4, 1);
+      expect(layout.width).toBeCloseTo((width === 58 ? 44 : 68) * 96 / 25.4, 1);
+      expect(layout.contentWidth).toBeCloseTo((width === 58 ? 42 : 66) * 96 / 25.4, 1);
       expect(layout.height).toBeGreaterThan(2000);
       expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
       expect(layout.violations).toEqual([]);
@@ -99,21 +118,81 @@ for (const printableWidth of [44, 48]) {
 }
 
 test('cashier can select 58 mm before printing a store configured for 80 mm', async ({ page }) => {
+  await mockPrinter(page);
   await page.goto('/tests/fixtures/receipt.html?width=80mm&items=1');
   const receipt = page.locator('#printable-receipt');
   await expect(receipt).toHaveAttribute('data-paper-width', '80mm');
-  const selector = page.getByLabel('Bobina para esta impressão');
+  const selector = page.getByLabel('Bobina deste caixa');
   await selector.selectOption('58mm');
   await selector.press('Enter');
   expect(await page.evaluate(() => document.body.dataset.newSales)).toBeUndefined();
   await expect(receipt).toHaveAttribute('data-paper-width', '58mm');
-  // Check the actual print action uses the selected width.
-  await page.evaluate(() => {
-    window.print = () => { document.body.dataset.printedWidth = document.querySelector('#printable-receipt')?.getAttribute('data-paper-width') || ''; };
-  });
   await page.getByRole('button', { name: 'Imprimir Cupom (58 mm)', exact: true }).click();
-  expect(await page.evaluate(() => document.body.dataset.printedWidth)).toBe('58mm');
-  await page.emulateMedia({ media: 'print' });
-  const box = await receipt.boundingBox();
-  expect(box!.width).toBeCloseTo(48 * 96 / 25.4, 1);
+  await expect(page.locator('body')).toHaveAttribute('data-printed-width', '58mm');
+  // Opening another sale must not silently restore the store default of 80 mm.
+  await page.goto('/tests/fixtures/receipt.html?width=80mm&items=2');
+  await expect(selector).toHaveValue('58mm');
+  await expect(receipt).toHaveAttribute('data-paper-width', '58mm');
 });
+
+for (const width of [58, 80]) {
+  for (const items of [1, 60]) {
+    test(`actual ${width} mm print document and PDF stay inside the page for ${items} items`, async ({ page, context }, testInfo) => {
+      await mockPrinter(page);
+      await page.goto(`/tests/fixtures/receipt.html?width=${width}mm&items=${items}&fiscal=true`);
+      const print = page.getByRole('button', { name: `Imprimir DANFE NFC-e (${width} mm)`, exact: true });
+      await expect(print).toBeEnabled();
+      await print.click();
+      await expect(page.locator('body')).toHaveAttribute('data-printed-width', `${width}mm`);
+      const frame = page.frameLocator('iframe[data-thermal-print]');
+      const receipt = frame.locator('#thermal-receipt');
+      await expect(receipt).toContainText(`PRODUTO ${items}`);
+      await expect(receipt).toContainText(items === 1 ? 'R$ 19,00' : 'R$ 1199,00');
+      await expect(receipt).toContainText('Obrigado pela preferência!');
+      const geometry = await receipt.evaluate(root => {
+        const bounds = root.getBoundingClientRect();
+        const left = bounds.left + parseFloat(getComputedStyle(root).paddingLeft);
+        const right = bounds.right - parseFloat(getComputedStyle(root).paddingRight);
+        const violations: string[] = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const text = walker.currentNode;
+          if (!text.textContent?.trim() || !text.parentElement?.getClientRects().length) continue;
+          const css = getComputedStyle(text.parentElement);
+          if (css.color !== 'rgb(0, 0, 0)' || parseFloat(css.fontSize) < 11) violations.push('contrast/size');
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          for (const rect of range.getClientRects()) {
+            if (rect.left < left - 1 || rect.right > right + 1) violations.push(text.textContent!);
+          }
+        }
+        const amount = root.querySelector('.receipt-total .receipt-amount')!.getBoundingClientRect();
+        return { width: bounds.width, amountLeft: amount.left, left, violations };
+      });
+      expect(geometry.width).toBeCloseTo((width === 58 ? 44 : 68) * 96 / 25.4, 1);
+      expect(geometry.amountLeft).toBeCloseTo(geometry.left, 1);
+      expect(geometry.violations).toEqual([]);
+      // Render exactly the emitted print document with the browser print engine.
+      const html = await frame.locator('html').evaluate(el => el.outerHTML);
+      const printPage = await context.newPage();
+      await printPage.setContent('<!doctype html>' + html);
+      const pdf = await printPage.pdf({ path: testInfo.outputPath('actual-print.pdf'), preferCSSPageSize: true, printBackground: true });
+      const boxes = [...pdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+      expect(boxes.length).toBeGreaterThan(0);
+      for (const box of boxes) {
+        expect(Number(box[1])).toBeCloseTo(width * 72 / 25.4, 0);
+        expect(Number(box[2])).toBeLessThanOrEqual(1000 * 72 / 25.4 + 1);
+      }
+      await testInfo.attach('actual-print.pdf', { body: pdf, contentType: 'application/pdf' });
+      await printPage.emulateMedia({ media: 'print' });
+      await testInfo.attach('print-layout.png', { body: await printPage.locator('#thermal-receipt').screenshot({ path: testInfo.outputPath('print-layout.png') }), contentType: 'image/png' });
+      await printPage.close();
+      // Closing the print dialog releases the frame and allows another print.
+      await page.evaluate(() => {
+        document.querySelector<HTMLIFrameElement>('iframe[data-thermal-print]')!.contentWindow!.dispatchEvent(new Event('afterprint'));
+      });
+      await expect(page.locator('iframe[data-thermal-print]')).toHaveCount(0);
+      await expect(print).toBeEnabled();
+    });
+  }
+}

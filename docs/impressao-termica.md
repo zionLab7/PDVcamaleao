@@ -10,21 +10,29 @@ com as classes cinza da tela, em tamanhos de 8–10 px. Drivers monocromáticos 
 transformar esses tons em pontos, tornando o texto fraco. A impressão agora usa preto
 em todos os elementos, fonte Arial de no mínimo 11 px e títulos de 14 px.
 
-A seleção de bobina determina a largura do bloco completo: bobina de 58 mm usa um bloco
-de **48 mm**, e bobina de 80 mm usa um bloco de **72 mm**. Esses limites incluem uma
-folga interna de 1 mm de cada lado (46/70 mm para texto). A largura física da bobina
-não é a largura imprimível. Usar um bloco de 58 mm, mesmo com 48 mm de conteúdo,
-deslocava o conteúdo para a direita e podia cortar os valores em drivers com área
-útil de 48 mm. O bloco também se adapta se o driver informar uma área ainda menor.
+## Documento exclusivo para impressão
 
-O seletor **Bobina para esta impressão**, ao lado dos botões, permite conferir e alterar
-58/80 mm antes de imprimir. Ele começa com a configuração salva da loja; a alteração
-vale para o recibo aberto. Para manter a preferência nos próximos recibos, salve-a
-em Configurações. O botão de impressão também exibe a largura selecionada.
+O botão de impressão agora prepara um documento separado, em um iframe, sem os
+estilos responsivos do aplicativo. Ele espera o carregamento do documento, das fontes
+locais e das imagens, e define uma página física de **58 mm ou 80 mm**. A altura é
+medida a partir do próprio recibo; vendas acima de 1 metro são paginadas mantendo a
+mesma largura. Isso substitui a chamada a `window.print()` sobre a página inteira,
+que deixava o tamanho da página como `auto`.
 
-O recibo impresso fica diretamente no `body`, fora do
-modal, para evitar os limites de altura e os cortes dos contêineres de rolagem.
-Descrições completas podem ocupar várias linhas. Prévia e impressão usam o mesmo conteúdo.
+Os valores ficam na coluna da esquerda, junto de seus rótulos. O NCM ocupa uma linha
+separada. Não há mais uma coluna de valores encostada na borda direita. O bloco tem
+44 mm para bobina de 58 mm ou 68 mm para bobina de 80 mm, incluindo 1 mm de folga
+interna em cada lado. Cabeçalho, descrições, pagamentos, total, rodapé e dados fiscais
+são copiados do mesmo conteúdo da prévia, sem reconstruir ou recalcular a venda.
+
+O seletor **Bobina deste caixa** salva 58/80 mm neste navegador/computador. Essa
+preferência tem prioridade sobre o padrão da loja e permanece nas próximas vendas
+e após recarregar o aplicativo. Quando não há preferência local, o padrão salvo da
+loja é utilizado. Em navegadores com armazenamento bloqueado, a impressão funciona,
+mas a escolha pode precisar ser repetida. Para trocar de impressora, altere o seletor.
+
+O atalho Ctrl+P mantém um layout de segurança na página principal, mas o fluxo com
+página física definida é o botão **Imprimir Cupom (58 mm)** / **Imprimir DANFE NFC-e**.
 
 ## Aplicar a atualização e testar
 
@@ -38,8 +46,9 @@ Descrições completas podem ocupar várias linhas. Prévia e impressão usam o 
    docker compose up -d --no-deps client
    ```
 2. Recarregue o aplicativo no computador do caixa para buscar os arquivos novos.
-3. Em Configurações, selecione a bobina de **58 mm** e salve. No recibo, confirme que
-   **Bobina para esta impressão** e o botão **Imprimir Cupom (58 mm)** mostram 58 mm.
+3. No recibo, escolha **58 mm** em **Bobina deste caixa**. O botão deverá mostrar
+   **Imprimir Cupom (58 mm)**. A escolha fica salva neste computador; o padrão de
+   Configurações também pode ser ajustado, mas não sobrescreve a escolha local do caixa.
 4. Ao imprimir, selecione a térmica e o papel de **58 mm** no driver. Use escala **100%**,
    margens **nenhuma** e desative cabeçalhos/rodapés do navegador. Não use ajuste para A4.
    O comprimento da bobina/página é controlado pelo driver; o aplicativo não fixa uma
@@ -47,9 +56,12 @@ Descrições completas podem ocupar várias linhas. Prévia e impressão usam o 
 5. Reimprima uma venda. Confira CNPJ, data, quantidades, preços, total e rodapé; confira
    também um produto com descrição longa. Se houver NFC-e, teste a leitura do QR Code.
 
-O teste físico ainda precisa ser realizado na impressora do caixa. Se persistirem falhas
-com texto preto, registre modelo, sistema operacional, navegador e driver utilizados,
-além do resultado de uma impressão do mesmo recibo salva em PDF.
+O código não pode configurar remotamente o driver, a escala do diálogo de impressão
+ou a largura física da impressora. Se o documento de 58 mm ainda for cortado, é
+necessário examinar uma captura completa do diálogo de impressão (incluindo papel,
+escala e margens), o modelo da impressora e seu driver. Salvar o mesmo recibo em PDF
+pelo diálogo permite separar um corte no documento de um corte provocado pelo driver.
+O teste físico precisa ser concluído na impressora do caixa.
 
 ## Teste de regressão
 
@@ -63,4 +75,8 @@ npm run build:client
 Os testes usam o componente real em Chromium, nas duas larguras, com e sem dados fiscais,
 e vendas de 60 itens. Verificam contraste, tamanho mínimo, ausência de texto fora da área
 útil, totais, rodapé, QR Code e isolamento do modal, sem depender do banco ou da SEFAZ.
-Também simulam áreas úteis estreitas de 44/48 mm e a troca de 80 para 58 mm antes de imprimir.
+Também verificam a preferência local após abrir outra venda, a preparação do documento
+isolado, o fim do diálogo de impressão e a ausência de valores na borda direita.
+O Chromium gera PDFs a partir do documento efetivamente emitido. Os testes conferem
+que todas as páginas possuem a largura física de 58/80 mm, em vendas de 1 e 60 itens,
+e preservam arquivos PDF e capturas como anexos dos resultados.

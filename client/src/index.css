@@ -72,16 +72,16 @@
     box-sizing: border-box !important;
     /* The WHOLE box must fit the print head, not the physical roll. Drivers can
        add their own non-printable margins; a 58 mm box can still be cropped. */
-    width: 48mm !important;
+    width: 44mm !important;
     max-width: 100% !important;
     margin: 0 !important;
-    /* Keep 1 mm safety padding INSIDE the 48 mm printable box. */
+    /* Also keep the Ctrl+P fallback away from the physical right edge. */
     padding: 2mm 1mm !important;
     background: #fff !important;
   }
 
   #printable-receipt[data-paper-width="80mm"] {
-    width: 72mm !important;
+    width: 68mm !important;
   }
 
   /* Apply to EVERY descendant: screen gray utilities otherwise survive inheritance
@@ -119,8 +119,7 @@
   }
 
   #printable-receipt .flex {
-    flex-wrap: wrap;
-    column-gap: 2mm;
+    display: block;
   }
 
   /* Date, operator and customer do not fit side by side on a 58 mm roll. */
@@ -133,10 +132,25 @@
   }
 
   #printable-receipt .receipt-amount {
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow-wrap: normal;
-    margin-left: auto;
+    display: block;
+    white-space: normal;
+    margin-left: 0;
+  }
+
+  #printable-receipt .receipt-item-total-heading {
+    display: none;
+  }
+
+  #printable-receipt .receipt-item-details .receipt-amount::before {
+    content: "Valor item: ";
+  }
+
+  #printable-receipt .receipt-ncm {
+    display: block;
+  }
+
+  #printable-receipt .receipt-item {
+    break-inside: avoid;
   }
 
   /* Print complete product descriptions instead of the screen's one-line clamp. */

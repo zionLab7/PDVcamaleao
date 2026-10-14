@@ -16,6 +16,7 @@ import {
 import { Sale, StoreSettings } from '../../types';
 import * as api from '../../services/api';
 import { sound } from '../../services/audio';
+import { getPrinterPaperWidth, savePrinterPaperWidth, printThermalReceipt, PaperWidth } from '../../services/thermalPrint';
 
 interface ReceiptModalProps {
   sale: Sale;
@@ -30,12 +31,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   onNewSale,
 }) => {
-  const [printWidth, setPrintWidth] = useState<'58mm' | '80mm'>(settings.receiptWidth);
+  const [printWidth, setPrintWidth] = useState<PaperWidth>(() => getPrinterPaperWidth(settings.receiptWidth));
   const is80mm = printWidth === '80mm';
-
-  useEffect(() => {
-    setPrintWidth(settings.receiptWidth);
-  }, [settings.receiptWidth]);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   // Fiscal emission states
   const [fiscalStatus, setFiscalStatus] = useState<'none' | 'pending' | 'authorized' | 'rejected'>(
@@ -89,9 +88,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   };
 
-  // Print the isolated receipt; paper size is selected in the printer driver.
-  const handlePrint = () => {
-    window.print();
+  // Print a dedicated document with its own physical page and independent CSS.
+  const handlePrint = async () => {
+    const receipt = document.getElementById('printable-receipt');
+    if (!receipt || isPrinting) return;
+    setIsPrinting(true);
+    setPrintError(null);
+    try {
+      await printThermalReceipt(receipt, printWidth);
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Não foi possível imprimir o cupom.');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   // Keyboard shortcut: Enter starts new sale, Esc closes
@@ -213,17 +222,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
       {/* Items */}
       <div className="py-2 border-b border-dashed border-slate-300 space-y-1.5">
-        <div className="flex justify-between font-bold text-[10px] text-slate-700 pb-1 border-b border-slate-200">
+        <div className="receipt-item-header flex justify-between font-bold text-[10px] text-slate-700 pb-1 border-b border-slate-200">
           <span>ITEM / DESCRIÇÃO</span>
-          <span>TOTAL</span>
+          <span className="receipt-item-total-heading">TOTAL</span>
         </div>
         {sale.items.map((item, idx) => (
-          <div key={idx} className="text-[11px]">
+          <div key={idx} className="receipt-item text-[11px]">
             <div className="font-bold line-clamp-1">{idx + 1}. {item.product.name}</div>
-            <div className="flex justify-between text-[10px] text-slate-600">
+            <div className="receipt-item-details flex justify-between text-[10px] text-slate-600">
               <span>
                 {item.quantity} {item.product.unit} x R$ {item.unitPrice.toFixed(2).replace('.', ',')}
-                {item.product.ncm && <span className="text-[8px] text-slate-400 ml-1">NCM:{item.product.ncm}</span>}
+                {item.product.ncm && <span className="receipt-ncm text-[8px] text-slate-400 ml-1">NCM:{item.product.ncm}</span>}
               </span>
               <span className="receipt-amount font-bold text-slate-900">R$ {item.total.toFixed(2).replace('.', ',')}</span>
             </div>
@@ -399,26 +408,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
             <div className="flex items-center justify-between gap-2 text-xs">
               <label htmlFor="receipt-paper-width" className="font-bold text-slate-700">
-                Bobina para esta impressão
+                Bobina deste caixa
               </label>
               <select
                 id="receipt-paper-width"
                 value={printWidth}
-                onChange={(event) => setPrintWidth(event.target.value as '58mm' | '80mm')}
+                disabled={isPrinting}
+                onChange={(event) => {
+                  const width = event.target.value as PaperWidth;
+                  setPrintWidth(width);
+                  savePrinterPaperWidth(width);
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
               >
                 <option value="58mm">58 mm</option>
                 <option value="80mm">80 mm</option>
               </select>
             </div>
+            <p className="text-[11px] text-slate-500">Esta escolha fica salva neste computador.</p>
+            {printError && <p role="alert" className="text-xs text-rose-700">{printError}</p>}
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handlePrint}
+                disabled={isPrinting || isEmittingNfce || (isFiscalAuthorized && !qrCodeDataUrl)}
                 className="py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow"
               >
                 <Printer className="w-4 h-4 text-emerald-400" />
-                <span>{isFiscalAuthorized ? 'Imprimir DANFE NFC-e' : 'Imprimir Cupom'} ({is80mm ? '80' : '58'} mm)</span>
+                <span>{isPrinting ? 'Impressão em andamento…' : `${isFiscalAuthorized ? 'Imprimir DANFE NFC-e' : 'Imprimir Cupom'} (${is80mm ? '80' : '58'} mm)`}</span>
               </button>
 
               <button
