@@ -18,6 +18,8 @@ import { generatePixPayload, generatePixQrCodeDataUrl } from '../../services/pix
 import { sound } from '../../services/audio';
 
 interface PaymentModalProps {
+  initialCustomer?: { name: string; document: string; phone: string };
+  busy?: boolean;
   items: CartItem[];
   subtotal: number;
   discount: number;
@@ -28,6 +30,8 @@ interface PaymentModalProps {
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
+  initialCustomer,
+  busy = false,
   items,
   subtotal,
   discount,
@@ -51,9 +55,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [installments, setInstallments] = useState<number>(1);
 
   // Fiado details
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerCpf, setCustomerCpf] = useState('');
+  const [customerName, setCustomerName] = useState(initialCustomer?.name || '');
+  const [customerPhone, setCustomerPhone] = useState(initialCustomer?.phone || '');
+  const [customerCpf, setCustomerCpf] = useState(initialCustomer?.document || '');
 
   // Split / Multi payment details
   const [splitMethod1, setSplitMethod1] = useState<PaymentMethod>('dinheiro');
@@ -95,6 +99,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   // Submit payment
   const handleFinalize = () => {
+    if (busy) return;
     let payments: PaymentDetail[] = [];
     let paid = total;
     let change = 0;
@@ -189,13 +194,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   // Keyboard shortcut inside modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !busy) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
@@ -349,7 +354,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 {selectedMethod === 'multiplo' && <span>Dividir em Múltiplas Formas</span>}
               </h3>
               <button
-                onClick={onClose}
+                onClick={() => { if (!busy) onClose(); }}
                 className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -648,18 +653,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => { if (!busy) onClose(); }}
               className="px-5 py-3 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
             >
               Cancelar (ESC)
             </button>
             <button
               type="button"
+              disabled={busy}
               onClick={handleFinalize}
               className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-base font-extrabold rounded-xl shadow-lg shadow-emerald-600/30 transition-all flex items-center space-x-2 active:scale-95"
             >
               <CheckCircle2 className="w-5 h-5" />
-              <span>Confirmar Recebimento</span>
+              <span>{busy ? 'Registrando…' : 'Confirmar Recebimento'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

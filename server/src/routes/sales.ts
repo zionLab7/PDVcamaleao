@@ -1,3 +1,4 @@
+import { assertEditable, lockQuote, money, QuoteError } from '../services/quotes';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
@@ -29,6 +30,8 @@ const createSaleSchema = z.object({
   payments: z.array(salePaymentSchema).min(1),
   amountPaid: z.number().nonnegative().optional().default(0),
   change: z.number().nonnegative().optional().default(0),
+  quoteId: z.string().optional(),
+  quoteVersion: z.number().int().positive().optional(),
   customerName: z.string().optional().nullable(),
   customerCpf: z.string().optional().nullable(),
 });
@@ -95,14 +98,41 @@ router.post('/', async (req, res) => {
       if (u) operatorName = u.name;
     }
 
-    // Sequence number
-    const lastSale = await prisma.sale.findFirst({
-      where: { tenantId: req.tenantId! },
-      orderBy: { sequenceNumber: 'desc' },
-    });
-    const nextSeq = (lastSale?.sequenceNumber || 0) + 1;
-
     const result = await prisma.$transaction(async (tx) => {
+      // Same lock order as quote creation; serializes sale numbering per store.
+      await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${req.tenantId!} FOR UPDATE`;
+      const lastSale = await tx.sale.findFirst({ where: { tenantId: req.tenantId! }, orderBy: { sequenceNumber: 'desc' } });
+      const nextSeq = (lastSale?.sequenceNumber || 0) + 1;
+      let quote;
+      if (data.quoteId) {
+        quote = await lockQuote(tx, req.tenantId!, data.quoteId);
+        assertEditable(quote, data.quoteVersion);
+        if (quote.status === 'declined') throw new QuoteError(400, 'Reabra o orçamento recusado antes de converter.');
+        const openRegister = await tx.cashRegister.findFirst({ where: { tenantId: req.tenantId!, isOpen: true } });
+        if (!openRegister) throw new QuoteError(400, 'Abra o caixa antes de converter o orçamento.');
+        if (data.payments.some(p => !['dinheiro', 'pix', 'debito', 'credito', 'fiado'].includes(p.method)))
+          throw new QuoteError(400, 'Forma de pagamento inválida.');
+        const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+        if (quote.validUntil < today) throw new QuoteError(400, 'Orçamento vencido. Atualize a validade antes de converter.');
+        // Use the saved proposal as the source of truth, never client-provided totals.
+        data.items = quote.items as typeof data.items;
+        data.subtotal = quote.subtotal;
+        data.discount = quote.discount;
+        data.total = quote.total;
+        data.customerName = data.customerName || quote.customerName;
+        data.customerCpf = data.customerCpf || quote.customerDocument;
+        const productIds = [...new Set(data.items.map(i => i.productId))];
+        const available = await tx.product.count({ where: { tenantId: req.tenantId!, active: true, id: { in: productIds } } });
+        if (available !== productIds.length) throw new QuoteError(400, 'Há um produto removido. Edite o orçamento antes de converter.');
+        if (Math.abs(money(data.payments.reduce((sum, p) => sum + p.amount, 0)) - data.total) > 0.01)
+          throw new QuoteError(400, 'O pagamento difere do total do orçamento.');
+        if (Math.abs(money(data.amountPaid - data.change) - data.total) > 0.01)
+          throw new QuoteError(400, 'Valor recebido ou troco inválido.');
+        // Keep the existing PDV contract: payment amounts are NET; tender/change
+        // live in amountPaid/change. They must not be subtracted twice from cash.
+        if (data.change > 0 && !data.payments.some(p => p.method === 'dinheiro'))
+          throw new QuoteError(400, 'Troco exige pagamento em dinheiro.');
+      }
       // 1. Create Sale
       const newSale = await tx.sale.create({
         data: {
@@ -159,7 +189,7 @@ router.post('/', async (req, res) => {
       // 3. If there is cash payment, update open cash register balance
       const cashPayments = data.payments.filter((p) => p.method === 'dinheiro');
       if (cashPayments.length > 0) {
-        const cashAmount = cashPayments.reduce((acc, p) => acc + p.amount, 0) - (data.change || 0);
+        const cashAmount = cashPayments.reduce((acc, p) => acc + p.amount, 0) - (quote ? 0 : (data.change || 0));
         if (cashAmount > 0) {
           const openRegister = await tx.cashRegister.findFirst({
             where: { tenantId: req.tenantId!, isOpen: true },
@@ -176,6 +206,11 @@ router.post('/', async (req, res) => {
         }
       }
 
+      if (quote) {
+        await tx.quote.update({ where: { id: quote.id }, data: {
+          status: 'converted', saleId: newSale.id, version: { increment: 1 },
+        } });
+      }
       return newSale;
     });
 
@@ -214,6 +249,7 @@ router.post('/', async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Dados inválidos', details: error.errors });
     }
+    if (error instanceof QuoteError) return res.status(error.status).json({ error: error.message });
     console.error('Error creating sale:', error);
     res.status(500).json({ error: 'Erro ao registrar venda' });
   }
@@ -226,7 +262,7 @@ router.patch('/:id/cancel', async (req, res) => {
 
     const sale = await prisma.sale.findFirst({
       where: { id, tenantId: req.tenantId! },
-      include: { items: true, payments: true },
+      include: { items: true, payments: true, quote: true },
     });
 
     if (!sale) {
@@ -257,7 +293,7 @@ router.patch('/:id/cancel', async (req, res) => {
       // 3. Deduct cash if paid in cash
       const cashPayments = sale.payments.filter((p) => p.method === 'dinheiro');
       if (cashPayments.length > 0) {
-        const cashAmount = cashPayments.reduce((acc, p) => acc + p.amount, 0) - (sale.change || 0);
+        const cashAmount = cashPayments.reduce((acc, p) => acc + p.amount, 0) - (sale.quote ? 0 : (sale.change || 0));
         if (cashAmount > 0) {
           const openRegister = await tx.cashRegister.findFirst({
             where: { tenantId: req.tenantId!, isOpen: true },

@@ -9,7 +9,8 @@
     "build": "tsc",
     "db:push": "prisma db push",
     "db:seed": "ts-node src/seed.ts",
-    "create:tenant": "ts-node src/createTenant.ts"
+    "create:tenant": "ts-node src/createTenant.ts",
+    "test:quotes": "npm run build && node --test tests/quotes.test.cjs"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

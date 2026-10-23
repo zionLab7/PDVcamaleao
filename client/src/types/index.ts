@@ -143,3 +143,39 @@ export interface CloudSyncStatus {
   syncing: boolean;
   lastError?: string;
 }
+
+export interface QuoteItem {
+  productId: string;
+  productName: string;
+  barcode: string;
+  ncm: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  total: number;
+}
+export interface Quote {
+  id: string;
+  number: number;
+  version: number;
+  customerName: string;
+  customerDocument: string;
+  customerPhone: string;
+  customerEmail: string;
+  customerAddress: string;
+  validUntil: string;
+  paymentTerms: string;
+  deliveryTerms: string;
+  notes: string;
+  status: 'open' | 'accepted' | 'declined' | 'converted';
+  items: QuoteItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  operatorName: string;
+  saleId?: string;
+  sale?: { sequenceNumber: number; status: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}

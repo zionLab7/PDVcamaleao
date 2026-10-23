@@ -1,5 +1,6 @@
 import React from 'react';
 import { 
+  FileText,
   ShoppingCart, 
   Package, 
   BarChart3, 
@@ -14,8 +15,8 @@ import { Product, StoreSettings, User, CashRegisterState } from '../types';
 import { auth } from '../services/auth';
 
 interface HeaderProps {
-  activeTab: 'pos' | 'inventory' | 'reports' | 'settings';
-  setActiveTab: (tab: 'pos' | 'inventory' | 'reports' | 'settings') => void;
+  activeTab: 'pos' | 'inventory' | 'reports' | 'settings' | 'quotes';
+  setActiveTab: (tab: 'pos' | 'inventory' | 'reports' | 'settings' | 'quotes') => void;
   products: Product[];
   settings: StoreSettings;
   currentUser: User;
@@ -47,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="bg-slate-900/95 backdrop-blur-md text-white border-b border-slate-800/80 sticky top-0 z-30 shadow-lg">
       <div className="max-w-[1600px] mx-auto px-3 sm:px-5">
-        <div className="flex items-center justify-between h-15">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 py-2">
           
           {/* BRAND & CASH STATUS */}
           <div className="flex items-center space-x-3">
@@ -84,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* CLEAN CENTER NAVIGATION (Pill Style) */}
-          <nav className="flex items-center bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+          <nav className="order-last w-full 2xl:order-none 2xl:w-auto flex items-center overflow-x-auto [&>button]:shrink-0 [&>button]:whitespace-nowrap bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
             <button
               onClick={() => setActiveTab('pos')}
               className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -110,6 +111,11 @@ export const Header: React.FC<HeaderProps> = ({
               {lowStockCount > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-900 ml-0.5" />
               )}
+            </button>
+
+            <button onClick={() => setActiveTab('quotes')}
+              className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'quotes' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              <FileText className="w-3.5 h-3.5" /><span>Orçamentos</span>
             </button>
 
             {canAccessReports && (

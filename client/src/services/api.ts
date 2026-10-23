@@ -189,6 +189,8 @@ export const sales = {
   },
   
   create: (data: {
+    quoteId?: string;
+    quoteVersion?: number;
     items: Array<{
       productId: string;
       productName: string;
@@ -349,3 +351,11 @@ export const categories = {
 };
 
 
+
+// Proposals remain on the server and only move stock/cash at checkout.
+export const quotes = {
+  list: () => request<import('../types').Quote[]>('/quotes'),
+  get: (id: string) => request<import('../types').Quote>(`/quotes/${id}`),
+  create: (data: unknown) => request<import('../types').Quote>('/quotes', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: unknown) => request<import('../types').Quote>(`/quotes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};

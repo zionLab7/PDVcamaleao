@@ -20,6 +20,7 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  quotes        Quote[]
   users         User[]
   products      Product[]
   sales         Sale[]
@@ -100,6 +101,7 @@ model Sale {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  quote          Quote?
   items          SaleItem[]
   payments       SalePayment[]
 }
@@ -208,3 +210,35 @@ model Category {
   @@unique([tenantId, name])
 }
 
+
+// Quotes are commercial proposals: they do not reserve stock or move cash.
+// Product descriptions/prices are snapshots so existing proposals remain stable.
+model Quote {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number          Int
+  version         Int      @default(1)
+  customerName    String
+  customerDocument String  @default("")
+  customerPhone   String   @default("")
+  customerEmail   String   @default("")
+  customerAddress String   @default("")
+  validUntil      String
+  paymentTerms    String   @default("")
+  deliveryTerms   String   @default("")
+  notes           String   @default("")
+  status          String   @default("open") // open, accepted, declined, converted
+  items           Json
+  subtotal        Float
+  discount        Float    @default(0)
+  total           Float
+  operatorName    String
+  saleId          String?  @unique
+  sale            Sale?    @relation(fields: [saleId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId, createdAt])
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LoginPage } from './pages/LoginPage';
+import { QuotesView } from './components/Quotes/QuotesView';
 import { Header } from './components/Header';
 import { POSView } from './components/POS/POSView';
 import { PaymentModal } from './components/POS/PaymentModal';
@@ -26,7 +27,7 @@ export const App: React.FC = () => {
   );
 
   // Navigation
-  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'reports' | 'settings'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'inventory' | 'reports' | 'settings' | 'quotes'>('pos');
 
   // Application Data States
   const [products, setProducts] = useState<Product[]>([]);
@@ -267,6 +268,11 @@ export const App: React.FC = () => {
             onOpenPriceCheck={() => setPriceCheckModalOpen(true)}
             onOpenCashMovement={() => setCashMovementModalOpen(true)}
           />
+        )}
+
+        {activeTab === 'quotes' && (
+          <QuotesView products={products} settings={settings} cashRegister={cashRegister}
+            onSaleCreated={(sale) => { setActiveReceiptSale(sale); setReceiptModalOpen(true); void loadData(); }} />
         )}
 
         {activeTab === 'inventory' && (
