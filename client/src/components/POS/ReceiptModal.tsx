@@ -38,10 +38,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   // Fiscal emission states
   const [fiscalStatus, setFiscalStatus] = useState<'none' | 'pending' | 'authorized' | 'rejected'>(
-    (sale.fiscalStatus as any) || 'none'
+    sale.fiscalStatus === 'cancelled' ? 'none' : sale.fiscalStatus || 'none'
   );
   const [isEmittingNfce, setIsEmittingNfce] = useState(false);
-  const [fiscalError, setFiscalError] = useState<string | null>(sale.nfceError || null);
+  const legacyAuthorization = sale.fiscalStatus === 'authorized' && !sale.nfceEnvironment;
+  const [fiscalError, setFiscalError] = useState<string | null>(legacyAuthorization
+    ? 'Emissão antiga. Confira a chave na SEFAZ antes de reemitir.' : sale.nfceError || null);
+  const [environment, setEnvironment] = useState(sale.nfceEnvironment);
+  const [issuedAt, setIssuedAt] = useState(sale.nfceIssuedAt);
+  const [taxEstimate, setTaxEstimate] = useState(sale.nfceTaxEstimate);
+  const [taxSource, setTaxSource] = useState(sale.nfceTaxSource);
   const [accessKey, setAccessKey] = useState<string | undefined>(sale.nfceAccessKey);
   const [protocol, setProtocol] = useState<string | undefined>(sale.nfceProtocol);
   const [nfceNumber, setNfceNumber] = useState<number | undefined>(sale.nfceNumber);
@@ -71,17 +77,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         setProtocol(res.protocol);
         setNfceNumber(res.number);
         setNfceSeries(res.series);
+        setEnvironment(res.environment);
+        setIssuedAt(res.issuedAt);
+        setTaxEstimate(res.taxEstimate);
+        setTaxSource(res.taxSource);
 
         const qr = await QRCode.toDataURL(res.qrCodeUrl, { width: 160, margin: 1 });
         setQrCodeDataUrl(qr);
       } else {
         sound.playAlert();
-        setFiscalStatus('rejected');
+        setFiscalStatus(res.fiscalStatus);
         setFiscalError(res.errorMessage || 'Rejeição na autorização da NFC-e');
       }
     } catch (err: any) {
       sound.playAlert();
-      setFiscalStatus('rejected');
       setFiscalError(err.message || 'Erro ao conectar aos servidores da SEFAZ');
     } finally {
       setIsEmittingNfce(false);
@@ -125,7 +134,27 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     timeStyle: 'medium',
   });
 
-  const isFiscalAuthorized = fiscalStatus === 'authorized';
+  const isFiscalAuthorized = fiscalStatus === 'authorized' && !!environment;
+  const consultationUrl = environment === 'homologacao'
+    ? 'https://www.homologacao.nfce.fazenda.sp.gov.br/NFCeConsultaPublica'
+    : 'https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica';
+  const displayDate = isFiscalAuthorized && issuedAt
+    ? new Date(issuedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : formattedDate;
+
+  const downloadFiscalXml = async () => {
+    try {
+      const { xml, fileName } = await api.fiscal.getXml(sale.id);
+      const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setFiscalError(error instanceof Error ? error.message : 'Erro ao baixar o XML autorizado.');
+    }
+  };
 
   // Share receipt via WhatsApp
   const handleWhatsAppShare = () => {
@@ -136,9 +165,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       `CNPJ: ${settings.document} | Fone: ${settings.phone}`,
       `--------------------------------`,
       docTitle,
+      isFiscalAuthorized && environment === 'homologacao' ? 'Homologação · sem valor fiscal' : '',
       `Venda: #${sale.sequenceNumber.toString().padStart(5, '0')}`,
       isFiscalAuthorized && nfceNumber ? `NFC-e nº: ${nfceNumber} Série: ${nfceSeries}` : '',
-      `Data: ${formattedDate}`,
+      `Data: ${displayDate}`,
       sale.customerCpf ? `CPF Consumidor: ${sale.customerCpf}` : '',
       `--------------------------------`,
       ...sale.items.map(
@@ -184,7 +214,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div className="text-[9px] text-slate-600">
               Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica
             </div>
-            {settings.fiscalEnvironment === 'homologacao' && (
+            {environment === 'homologacao' && (
               <div className="mt-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 font-black text-[9px] rounded">
                 EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL
               </div>
@@ -201,7 +231,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       <div className="receipt-meta py-2 border-b border-dashed border-slate-300 text-[10px] space-y-0.5">
         <div className="flex justify-between">
           <span>Venda: #{sale.sequenceNumber.toString().padStart(5, '0')}</span>
-          <span>{formattedDate}</span>
+          <span>{displayDate}</span>
         </div>
         {isFiscalAuthorized && nfceNumber && (
           <div className="flex justify-between font-bold text-slate-800">
@@ -315,8 +345,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           )}
 
           <div className="text-[8px] text-slate-500">
-            Consulta em: www.fazenda.sp.gov.br/nfce
+            Consulta em {consultationUrl}
           </div>
+        </div>
+      )}
+
+      {isFiscalAuthorized && taxEstimate != null && (
+        <div className="text-center text-[9px] text-slate-600">
+          Tributos aproximados R$ {taxEstimate.toFixed(2).replace('.', ',')} ({taxSource})
         </div>
       )}
 
@@ -379,7 +415,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="p-4 bg-white border-t border-slate-200 space-y-2">
 
             {/* Fiscal Button (if not already authorized) */}
-            {settings.enableNfce && !isFiscalAuthorized && (
+            {settings.enableNfce && !isFiscalAuthorized && !legacyAuthorization && sale.status === 'completed' && (
               <button
                 onClick={handleEmitNfce}
                 disabled={isEmittingNfce}
@@ -393,9 +429,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 ) : (
                   <>
                     <FileText className="w-4 h-4" />
-                    <span>Emitir Cupom Fiscal (NFC-e na SEFAZ)</span>
+                    <span>{fiscalStatus === 'pending' ? 'Consultar NFC-e pendente' : 'Emitir NFC-e na SEFAZ'}</span>
                   </>
                 )}
+              </button>
+            )}
+
+            {isFiscalAuthorized && (
+              <button type="button" onClick={downloadFiscalXml}
+                className="w-full py-2 px-4 border border-slate-200 rounded-xl text-xs font-bold">
+                Baixar XML fiscal autorizado
               </button>
             )}
 

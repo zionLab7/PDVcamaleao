@@ -30,7 +30,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [stock, setStock] = useState(productToEdit?.stock?.toString() || '10');
   const [minStock, setMinStock] = useState(productToEdit?.minStock?.toString() || '5');
   const [quickAccess, setQuickAccess] = useState<boolean>(productToEdit?.quickAccess || false);
-  const [ncm, setNcm] = useState(productToEdit?.ncm || '22021000');
+  const [ncm, setNcm] = useState(productToEdit?.ncm || '');
+  const [cest, setCest] = useState(productToEdit?.cest || '');
+  const [origin, setOrigin] = useState(productToEdit?.origin || '0');
+  const [csosn, setCsosn] = useState(productToEdit?.csosn || '102');
+  const [pisCst, setPisCst] = useState(productToEdit?.pisCst || '');
+  const [cofinsCst, setCofinsCst] = useState(productToEdit?.cofinsCst || '');
+  const [taxEstimateRate, setTaxEstimateRate] = useState(productToEdit?.taxEstimateRate?.toString() ?? '');
   const [cfop, setCfop] = useState(productToEdit?.cfop || '5102');
   const [loading, setLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -174,6 +180,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       quickAccess,
       ncm: ncm.trim().replace(/\D/g, '') || '00000000',
       cfop: cfop.trim() || '5102',
+      cest: cest.replace(/\D/g, '') || null,
+      origin,
+      csosn,
+      pisCst: pisCst || null,
+      cofinsCst: cofinsCst || null,
+      taxEstimateRate: taxEstimateRate === '' ? null : Number(taxEstimateRate),
     };
 
     setLoading(true);
@@ -487,9 +499,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
               <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
                 Classificação Fiscal (NFC-e)
               </span>
-              <span className="text-[10px] text-emerald-700 bg-emerald-100 font-bold px-2 py-0.5 rounded-full">
-                Preenchido Automático
-              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -518,6 +527,36 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
+              {([
+                ['CEST (quando aplicável)', cest, setCest],
+                ['Origem da mercadoria', origin, setOrigin],
+                ['CSOSN', csosn, setCsosn],
+              ] as const).map(([label, value, setValue]) => (
+                <label key={label} className="text-[11px] font-bold text-slate-600">
+                  {label}
+                  <input value={value} onChange={e => setValue(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-xl" />
+                </label>
+              ))}
+              {([
+                ['CST PIS', pisCst, setPisCst],
+                ['CST COFINS', cofinsCst, setCofinsCst],
+              ] as const).map(([label, value, setValue]) => (
+                <label key={label} className="text-[11px] font-bold text-slate-600">
+                  {label}
+                  <select value={value} onChange={e => setValue(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-xl">
+                    <option value="">Selecione</option>
+                    {['04', '05', '06', '07', '08', '09', '49', '99'].map(code => <option key={code}>{code}</option>)}
+                  </select>
+                </label>
+              ))}
+              <label className="text-[11px] font-bold text-slate-600">
+                Tributos aproximados (%)
+                <input type="number" min={0} max={100} step="any" value={taxEstimateRate}
+                  onChange={e => setTaxEstimateRate(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-xl" />
+              </label>
             </div>
           </div>
 

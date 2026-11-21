@@ -28,6 +28,9 @@ export interface Product {
   cfop?: string;
   origin?: string;
   csosn?: string;
+  pisCst?: string | null;
+  cofinsCst?: string | null;
+  taxEstimateRate?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -78,7 +81,10 @@ export interface Sale {
   nfceProtocol?: string;
   nfceQrCodeUrl?: string;
   nfceError?: string;
+  nfceEnvironment?: 'homologacao' | 'producao';
   nfceIssuedAt?: string;
+  nfceTaxEstimate?: number;
+  nfceTaxSource?: string;
   cancelledAt?: number;
   cancelledBy?: string;
   synced: boolean;
@@ -123,8 +129,14 @@ export interface StoreSettings {
   stateUf?: string;
   stateRegistration?: string;
   taxRegime?: string;
-  cscId?: string;
-  cscToken?: string;
+  fiscalLegalName?: string;
+  fiscalStreet?: string;
+  fiscalStreetNumber?: string;
+  fiscalDistrict?: string;
+  fiscalCityCode?: string;
+  fiscalPostalCode?: string;
+  fiscalTaxSource?: string;
+  nfceInitialNumber?: number;
   certificateOwner?: string;
   certificateExpiresAt?: string;
   nfceSeries?: number;

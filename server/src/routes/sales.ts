@@ -77,6 +77,17 @@ router.get('/', async (req, res) => {
       customerName: s.customerName || undefined,
       customerCpf: s.customerCpf || undefined,
       status: s.status,
+      fiscalStatus: s.fiscalStatus,
+      nfceAccessKey: s.nfceAccessKey,
+      nfceProtocol: s.nfceProtocol,
+      nfceNumber: s.nfceNumber,
+      nfceSeries: s.nfceSeries,
+      nfceQrCodeUrl: s.nfceQrCodeUrl,
+      nfceError: s.nfceError,
+      nfceIssuedAt: s.nfceIssuedAt,
+      nfceEnvironment: s.nfceEnvironment,
+      nfceTaxEstimate: s.nfceTaxEstimate,
+      nfceTaxSource: s.nfceTaxSource,
       synced: true,
     }));
 
@@ -275,10 +286,14 @@ router.patch('/:id/cancel', async (req, res) => {
 
     await prisma.$transaction(async (tx) => {
       // 1. Mark sale as cancelled
-      await tx.sale.update({
-        where: { id: sale.id },
+      const cancelled = await tx.sale.updateMany({
+        where: { id: sale.id, tenantId: req.tenantId!, status: 'completed',
+          fiscalStatus: { notIn: ['pending', 'authorized'] } },
         data: { status: 'cancelled' },
       });
+      if (!cancelled.count) {
+        throw new QuoteError(409, 'A venda tem NFC-e pendente ou autorizada, ou já foi cancelada. Confira a situação fiscal.');
+      }
 
       // 2. Restore stock for each item
       for (const item of sale.items) {
@@ -313,6 +328,7 @@ router.patch('/:id/cancel', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    if (error instanceof QuoteError) return res.status(error.status).json({ error: error.message });
     res.status(500).json({ error: 'Erro ao cancelar venda' });
   }
 });

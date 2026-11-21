@@ -1,3 +1,5 @@
+export type FiscalEnvironment = 'homologacao' | 'producao';
+
 export interface FiscalCertificateInfo {
   valid: boolean;
   ownerName: string;
@@ -28,6 +30,10 @@ export interface NfceItem {
   discount: number;
   origin: string;
   csosn: string;
+  cest?: string;
+  pisCst: string;
+  cofinsCst: string;
+  taxEstimate: number;
 }
 
 export interface NfcePayment {
@@ -44,6 +50,10 @@ export interface NfceEmissionResult {
   series?: number;
   qrCodeUrl?: string;
   xml?: string;
+  environment?: FiscalEnvironment;
+  issuedAt?: string;
+  taxEstimate?: number;
+  taxSource?: string;
   errorMessage?: string;
   cStat?: number;
   xMotivo?: string;

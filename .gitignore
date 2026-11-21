@@ -43,3 +43,7 @@ server/prisma/*.db-journal
 # Browser regression test output
 client/test-results/
 client/playwright-report/
+
+# Certificados fiscais privados
+*.pfx
+*.p12

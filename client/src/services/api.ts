@@ -303,7 +303,11 @@ export const fiscal = {
   emitNfce: (saleId: string, customerCpf?: string) =>
     request<{
       success: boolean;
-      fiscalStatus: string;
+      fiscalStatus: 'authorized' | 'rejected' | 'pending';
+      environment?: 'homologacao' | 'producao';
+      issuedAt?: string;
+      taxEstimate?: number;
+      taxSource?: string;
       accessKey?: string;
       protocol?: string;
       number?: number;
@@ -314,6 +318,8 @@ export const fiscal = {
       method: 'POST',
       body: JSON.stringify({ customerCpf }),
     }),
+
+  getXml: (saleId: string) => request<{ xml: string; fileName: string }>(`/fiscal/xml/${saleId}`),
 
   getDanfe: (saleId: string) =>
     request<{

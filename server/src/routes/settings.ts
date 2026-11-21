@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { StoreSetting } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { authMiddleware } from '../middleware/auth';
@@ -26,10 +27,20 @@ const settingsSchema = z.object({
   stateUf: z.string().optional().default('SP'),
   stateRegistration: z.string().optional().nullable(),
   taxRegime: z.string().optional().default('1'),
-  cscId: z.string().optional().nullable(),
-  cscToken: z.string().optional().nullable(),
-  nfceSeries: z.number().int().optional().default(1),
+  nfceSeries: z.number().int().min(1).max(899).optional().default(1),
+  nfceInitialNumber: z.number().int().min(1).max(999999999).optional(),
+  fiscalLegalName: z.string().max(60).optional().nullable(),
+  fiscalStreet: z.string().max(60).optional().nullable(),
+  fiscalStreetNumber: z.string().max(60).optional().nullable(),
+  fiscalDistrict: z.string().max(60).optional().nullable(),
+  fiscalCityCode: z.string().max(7).optional().nullable(),
+  fiscalPostalCode: z.string().max(9).optional().nullable(),
+  fiscalTaxSource: z.string().max(120).optional().nullable(),
 });
+
+export function publicStoreSettings({ certificateA1, certificatePassword, cscToken, ...settings }: StoreSetting) {
+  return settings;
+}
 
 // Get settings
 router.get('/', async (req, res) => {
@@ -48,7 +59,7 @@ router.get('/', async (req, res) => {
       });
     }
 
-    res.json(settings);
+    res.json(publicStoreSettings(settings));
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar configurações' });
   }
@@ -56,6 +67,9 @@ router.get('/', async (req, res) => {
 
 // Update settings
 router.put('/', async (req, res) => {
+  if (!['admin', 'manager'].includes(req.user?.role || '')) {
+    return res.status(403).json({ error: 'Somente administradores e gerentes podem alterar as configurações.' });
+  }
   try {
     const data = settingsSchema.parse(req.body);
 
@@ -68,7 +82,7 @@ router.put('/', async (req, res) => {
       },
     });
 
-    res.json(settings);
+    res.json(publicStoreSettings(settings));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Dados inválidos', details: error.errors });
