@@ -24,6 +24,9 @@ const productSchema = z.object({
   cfop: z.string().optional().default('5102'),
   origin: z.string().optional().default('0'),
   csosn: z.string().optional().default('102'),
+  pisCst: z.enum(['04', '05', '06', '07', '08', '09', '49', '99']).nullable().optional(),
+  cofinsCst: z.enum(['04', '05', '06', '07', '08', '09', '49', '99']).nullable().optional(),
+  taxEstimateRate: z.number().min(0).max(100).nullable().optional(),
 });
 
 // List products

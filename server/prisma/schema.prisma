@@ -67,6 +67,9 @@ model Product {
   cfop        String   @default("5102") // Venda de mercadoria dentro do estado
   origin      String   @default("0")    // 0 - Nacional
   csosn       String   @default("102")  // 102 - Simples Nacional sem crédito
+  pisCst      String?
+  cofinsCst   String?
+  taxEstimateRate Float?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -98,6 +101,10 @@ model Sale {
   nfceQrCodeUrl  String?  // URL do QR Code oficial da SEFAZ
   nfceError      String?  // Mensagem de rejeição da SEFAZ se houver
   nfceIssuedAt   DateTime?
+  nfceEnvironment String?
+  nfcePendingXml String?
+  nfceTaxEstimate Float?
+  nfceTaxSource  String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -193,6 +200,14 @@ model StoreSetting {
   certificateExpiresAt DateTime? // Data de expiração do certificado
   nfceSeries          Int       @default(1)
   lastNfceNumber      Int       @default(0)
+  fiscalLegalName     String?
+  fiscalStreet        String?
+  fiscalStreetNumber  String?
+  fiscalDistrict      String?
+  fiscalCityCode      String?
+  fiscalPostalCode    String?
+  fiscalTaxSource     String?
+  nfceInitialNumber   Int       @default(1)
 
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -241,4 +256,13 @@ model Quote {
 
   @@unique([tenantId, number])
   @@index([tenantId, createdAt])
+}
+
+model NfceSequence {
+  cnpj        String
+  environment String
+  series      Int
+  lastNumber  Int
+
+  @@id([cnpj, environment, series])
 }

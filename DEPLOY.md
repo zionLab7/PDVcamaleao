@@ -99,3 +99,7 @@ PDVCamaleao/
 - Gere JWT secrets aleatórios: `openssl rand -hex 32`
 - O banco PostgreSQL **não** expõe porta externamente no compose de produção
 - HTTPS é gerenciado automaticamente pelo Traefik + Let's Encrypt
+
+## Emissão direta de NFC-e para o Simples Nacional em SP
+
+Siga o [roteiro de configuração fiscal](docs/nfce-sp.md) para preparar o certificado A1, cadastrar os dados fiscais e testar a emissão em homologação.

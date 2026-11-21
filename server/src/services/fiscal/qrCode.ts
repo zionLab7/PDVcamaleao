@@ -1,4 +1,5 @@
-import crypto from 'crypto';
+import { randomInt } from 'crypto';
+import { FiscalEnvironment } from './types';
 
 /**
  * Calcula o Dígito Verificador (cDV) da Chave de Acesso usando Módulo 11 (pesos de 2 a 9)
@@ -44,13 +45,14 @@ export function generateNfceAccessKey({
   cNF?: string;
 }): { accessKey: string; cNF: string; cDV: number } {
   const cleanCnpj = cnpj.replace(/\D/g, '').padStart(14, '0');
-  const year = date.getFullYear().toString().slice(2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const localDate = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  const year = localDate.getUTCFullYear().toString().slice(2);
+  const month = (localDate.getUTCMonth() + 1).toString().padStart(2, '0');
   const aamm = `${year}${month}`;
 
   const formattedSeries = series.toString().padStart(3, '0');
   const formattedNumber = number.toString().padStart(9, '0');
-  const randomCnf = cNF || Math.floor(10000000 + Math.random() * 90000000).toString();
+  const randomCnf = cNF || randomInt(10000000, 100000000).toString();
 
   const keyWithoutDv = `${cUF}${aamm}${cleanCnpj}${model}${formattedSeries}${formattedNumber}${tpEmis}${randomCnf}`;
   const cDV = calculateModulo11(keyWithoutDv);
@@ -59,40 +61,14 @@ export function generateNfceAccessKey({
   return { accessKey, cNF: randomCnf, cDV };
 }
 
-/**
- * Gera o link oficial do QR Code da NFC-e (Padrão Nacional v2.0)
- */
-export function generateNfceQrCodeUrl({
-  accessKey,
-  environment, // 'homologacao' | 'producao'
-  cUF = '35',  // SP
-  date = new Date(),
-  total,
-  digestValue,
-  cscId,
-  cscToken,
-}: {
-  accessKey: string;
-  environment: 'homologacao' | 'producao';
-  cUF?: string;
-  date?: Date;
-  total: number;
-  digestValue: string;
-  cscId: string;
-  cscToken: string;
-}): string {
-  const baseUrl = environment === 'producao'
-    ? 'https://nfce.fazenda.sp.gov.br/qrcode'
-    : 'https://homologacao.nfce.fazenda.sp.gov.br/qrcode';
+export function publicConsultationUrl(environment: FiscalEnvironment): string {
+  const host = environment === 'producao'
+    ? 'www.nfce.fazenda.sp.gov.br'
+    : 'www.homologacao.nfce.fazenda.sp.gov.br';
+  return `https://${host}/NFCeConsultaPublica`;
+}
 
-  const tpAmb = environment === 'producao' ? '1' : '2';
-  const formattedTotal = total.toFixed(2);
-  const hexDigest = Buffer.from(digestValue, 'base64').toString('hex');
-  const cleanCscId = cscId.padStart(6, '0');
-
-  // Parâmetros para o hash: chNFe|2|tpAmb|idCSC|cHashQRCode
-  const hashString = `${accessKey}|2|${tpAmb}|${cleanCscId}${cscToken}`;
-  const cHashQRCode = crypto.createHash('sha1').update(hashString).digest('hex').toUpperCase();
-
-  return `${baseUrl}?p=${accessKey}|2|${tpAmb}|${cleanCscId}|${cHashQRCode}`;
+export function generateNfceQrCodeUrl(accessKey: string, environment: FiscalEnvironment): string {
+  const baseUrl = new URL('/qrcode', publicConsultationUrl(environment));
+  return `${baseUrl.href}?p=${accessKey}|3|${environment === 'producao' ? '1' : '2'}`;
 }

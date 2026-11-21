@@ -140,6 +140,7 @@ export const App: React.FC = () => {
     setProducts([]);
     setSales([]);
     setActiveTab('pos');
+    void loadData();
   };
 
   const handleSwitchOperator = () => {
@@ -331,7 +332,7 @@ export const App: React.FC = () => {
         <ReceiptModal
           sale={activeReceiptSale}
           settings={settings}
-          onClose={() => setReceiptModalOpen(false)}
+          onClose={() => { setReceiptModalOpen(false); void loadData(); }}
           onNewSale={handleNewSale}
         />
       )}

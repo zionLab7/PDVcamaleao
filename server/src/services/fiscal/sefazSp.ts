@@ -1,116 +1,94 @@
 import https from 'https';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import { randomInt } from 'crypto';
+import { FiscalEnvironment } from './types';
 
-export interface SefazSendResult {
-  success: boolean;
-  cStat: number;
-  xMotivo: string;
-  protocol?: string;
-  responseXml?: string;
-}
+const namespace = 'http://www.portalfiscal.inf.br/nfe';
 
-export async function sendNfceToSefazSp({
-  signedXml,
-  pfxBase64,
-  certificatePassword,
-  environment = 'homologacao',
-}: {
-  signedXml: string;
+interface Connection {
   pfxBase64: string;
   certificatePassword?: string;
-  environment: 'homologacao' | 'producao';
-}): Promise<SefazSendResult> {
-  const url = environment === 'producao'
-    ? 'https://nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx'
-    : 'https://homologacao.nfce.fazenda.sp.gov.br/ws/homenfeautorizacao4.asmx';
+  environment: FiscalEnvironment;
+}
 
-  const idLote = Math.floor(10000000 + Math.random() * 90000000).toString();
+async function requestSefaz(connection: Connection, service: string, xml: string): Promise<string> {
+  const host = connection.environment === 'producao'
+    ? 'nfce.fazenda.sp.gov.br'
+    : 'homologacao.nfce.fazenda.sp.gov.br';
+  const wsdl = `${namespace}/wsdl/${service}`;
+  const envelope = `<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><nfeDadosMsg xmlns="${wsdl}">${xml}</nfeDadosMsg></soap:Body></soap:Envelope>`;
 
-  const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4"><enviNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><idLote>${idLote}</idLote><indSinc>1</indSinc>${signedXml}</enviNFe></nfeDadosMsg></soap12:Body></soap12:Envelope>`;
-
-  try {
-    const cleanBase64 = pfxBase64.replace(/^data:.*?;base64,/, '').trim();
-    const pfxBuffer = Buffer.from(cleanBase64, 'base64');
-
-    const agent = new https.Agent({
-      pfx: pfxBuffer,
-      passphrase: certificatePassword || '',
-      rejectUnauthorized: false,
-      secureProtocol: 'TLSv1_2_method',
-    });
-
-    const parsedUrl = new URL(url);
-
-    const responseBody = await new Promise<string>((resolve, reject) => {
-      const req = https.request(
-        {
-          hostname: parsedUrl.hostname,
-          port: 443,
-          path: parsedUrl.pathname,
-          method: 'POST',
-          agent,
-          headers: {
-            'Content-Type': 'application/soap+xml; charset=utf-8',
-            'Content-Length': Buffer.byteLength(soapEnvelope, 'utf8'),
-          },
-          timeout: 10000,
-        },
-        (res) => {
-          let data = '';
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => (data += chunk));
-          res.on('end', () => resolve(data));
-        }
-      );
-
-      req.on('error', (err) => reject(err));
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Timeout de comunicação com os servidores da SEFAZ-SP.'));
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: host,
+      path: `/ws/${service}.asmx`,
+      method: 'POST',
+      agent: false,
+      pfx: Buffer.from(connection.pfxBase64.replace(/^data:.*?;base64,/, ''), 'base64'),
+      passphrase: connection.certificatePassword,
+      minVersion: 'TLSv1.2',
+      headers: {
+        'Content-Type': `application/soap+xml; charset=utf-8; action="${wsdl}/${service === 'NFeAutorizacao4' ? 'nfeAutorizacaoLote' : 'nfeConsultaNF'}"`,
+        'Content-Length': Buffer.byteLength(envelope),
+      },
+    }, res => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => {
+        body += chunk;
+        if (body.length > 1_000_000) req.destroy(new Error('Resposta SEFAZ excedeu o limite.'));
       });
-
-      req.write(soapEnvelope);
-      req.end();
+      res.on('error', reject);
+      res.on('end', () => {
+        if (res.statusCode === 200) resolve(body);
+        else reject(new Error(`SEFAZ retornou HTTP ${res.statusCode}.`));
+      });
     });
+    const timeout = setTimeout(() => req.destroy(new Error('Tempo limite de comunicação com a SEFAZ.')), 15000);
+    req.once('close', () => clearTimeout(timeout));
+    req.on('error', reject);
+    req.end(envelope);
+  });
+}
 
-    // Analisar resposta da SEFAZ
-    const cStatMatch = responseBody.match(/<cStat>(\d+)<\/cStat>/);
-    const xMotivoMatch = responseBody.match(/<xMotivo>(.*?)<\/xMotivo>/);
-    const nProtMatch = responseBody.match(/<nProt>(\d+)<\/nProt>/);
+export function parseSefazResult(xml: string, accessKey: string, environment: FiscalEnvironment, operation: 'authorization' | 'query') {
+  const document = new DOMParser().parseFromString(xml, 'application/xml');
+  const response = document.getElementsByTagNameNS(namespace, operation === 'authorization' ? 'retEnviNFe' : 'retConsSitNFe').item(0);
+  if (!response) throw new Error('Resposta da SEFAZ sem resultado fiscal.');
+  const read = (element: NonNullable<typeof response>, tag: string) =>
+    Array.from(element.childNodes).find(node => node.nodeType === 1 && node.localName === tag)?.textContent?.trim();
+  const env = environment === 'producao' ? '1' : '2';
+  if (read(response, 'tpAmb') !== env) throw new Error('Ambiente divergente na resposta da SEFAZ.');
 
-    const cStat = cStatMatch ? parseInt(cStatMatch[1], 10) : 0;
-    const xMotivo = xMotivoMatch ? xMotivoMatch[1] : 'Sem resposta detalhada da SEFAZ';
-    const protocol = nProtMatch ? nProtMatch[1] : undefined;
+  const protocolElement = response.getElementsByTagNameNS(namespace, 'protNFe').item(0);
+  const info = protocolElement?.getElementsByTagNameNS(namespace, 'infProt').item(0);
+  const outerStatus = Number(read(response, 'cStat'));
+  const cStat = Number(read(info || response, 'cStat'));
+  const xMotivo = read(info || response, 'xMotivo') || 'Sem motivo informado pela SEFAZ.';
+  if (!cStat) throw new Error('Resposta da SEFAZ sem código fiscal.');
+  const protocol = info && read(info, 'nProt');
+  const success = (cStat === 100 || cStat === 150)
+    && (operation === 'authorization' ? outerStatus === 104 : outerStatus === cStat)
+    && !!protocol && /^\d{15,17}$/.test(protocol) && read(info!, 'chNFe') === accessKey
+    && read(info!, 'tpAmb') === env;
 
-    // cStat 100 = Autorizado o uso da NF-e
-    // cStat 104 = Lote processado (verificar cStat do protNFe)
-    const success = cStat === 100 || (cStat === 104 && responseBody.includes('<cStat>100</cStat>'));
+  return {
+    success,
+    cStat,
+    xMotivo,
+    protocol: success ? protocol : undefined,
+    protocolXml: success ? new XMLSerializer().serializeToString(protocolElement!) : undefined,
+    pending: !success && ([100, 103, 104, 105, 106, 108, 109, 150, 204, 539, 999].includes(cStat) || operation === 'query'),
+  };
+}
 
-    return {
-      success,
-      cStat,
-      xMotivo,
-      protocol: protocol || `135${Date.now().toString().slice(-12)}`,
-      responseXml: responseBody,
-    };
-  } catch (error: any) {
-    // Se a conexão física com a SEFAZ falhou (por exemplo em desenvolvimento local ou máquina sem acesso)
-    console.error('Erro na requisição SOAP com a SEFAZ-SP:', error.message || error);
-    
-    // Em homologação, se for erro de rede/certificado de teste
-    if (environment === 'homologacao') {
-      console.log('⚠️ Ambiente de Homologação: Gerando autorização simulada de teste');
-      return {
-        success: true,
-        cStat: 100,
-        xMotivo: 'Autorizado o uso da NF-e (Simulação em Homologação)',
-        protocol: `135${Date.now().toString().slice(-12)}`,
-      };
-    }
+export async function sendNfceToSefazSp(connection: Connection, signedXml: string, accessKey: string) {
+  const body = `<enviNFe xmlns="${namespace}" versao="4.00"><idLote>${randomInt(10000000, 100000000)}</idLote><indSinc>1</indSinc>${signedXml}</enviNFe>`;
+  return parseSefazResult(await requestSefaz(connection, 'NFeAutorizacao4', body), accessKey, connection.environment, 'authorization');
+}
 
-    return {
-      success: false,
-      cStat: 999,
-      xMotivo: error.message || 'Falha de comunicação com a SEFAZ-SP.',
-    };
-  }
+export async function queryNfceAtSefazSp(connection: Connection, accessKey: string) {
+  const tpAmb = connection.environment === 'producao' ? '1' : '2';
+  const body = `<consSitNFe xmlns="${namespace}" versao="4.00"><tpAmb>${tpAmb}</tpAmb><xServ>CONSULTAR</xServ><chNFe>${accessKey}</chNFe></consSitNFe>`;
+  return parseSefazResult(await requestSefaz(connection, 'NFeConsultaProtocolo4', body), accessKey, connection.environment, 'query');
 }

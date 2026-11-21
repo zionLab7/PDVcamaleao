@@ -8,36 +8,15 @@ export function parseAndValidateCertificate(pfxBase64: string, password: string)
     const p12Asn1 = forge.asn1.fromDer(p12Der);
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
 
-    // Encontra o saco do certificado e a chave privada
-    let certBag: any = null;
-    let keyBag: any = null;
-
-    for (const bagType in forge.pki.oids) {
-      // iterate bags
-    }
-
-    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    const pkcs8Bags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-    const keyBags = p12.getBags({ bagType: forge.pki.oids.keyBag });
-
-    const certBagList = certBags[forge.pki.oids.certBag];
-    if (certBagList && certBagList.length > 0) {
-      certBag = certBagList[0];
-    }
-
-    const allKeyBags = (pkcs8Bags[forge.pki.oids.pkcs8ShroudedKeyBag] || []).concat(
-      keyBags[forge.pki.oids.keyBag] || []
-    );
-
-    if (allKeyBags.length > 0) {
-      keyBag = allKeyBags[0];
-    }
-
-    if (!certBag || !certBag.cert) {
-      throw new Error('Certificado X.509 não encontrado dentro do arquivo PFX/P12.');
-    }
-
-    const cert = certBag.cert;
+    const bags = (type: string) => p12.getBags({ bagType: type })[type] || [];
+    const key = [...bags(forge.pki.oids.pkcs8ShroudedKeyBag), ...bags(forge.pki.oids.keyBag)]
+      .find(bag => bag.key)?.key as forge.pki.rsa.PrivateKey | undefined;
+    const cert = bags(forge.pki.oids.certBag).map(bag => bag.cert).find(candidate => {
+      const publicKey = candidate?.publicKey as forge.pki.rsa.PublicKey | undefined;
+      return key && publicKey?.n?.equals(key.n) && publicKey.e.equals(key.e);
+    });
+    if (!cert || !key) throw new Error('O arquivo A1 precisa conter o certificado e a chave privada correspondente.');
+    if (new Date() < cert.validity.notBefore) throw new Error('O período de validade do certificado ainda não começou.');
     const expiresAt = cert.validity.notAfter;
     const now = new Date();
     const daysRemaining = Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -65,10 +44,7 @@ export function parseAndValidateCertificate(pfxBase64: string, password: string)
     }
 
     const pemCert = forge.pki.certificateToPem(cert);
-    let pemKey = '';
-    if (keyBag && keyBag.key) {
-      pemKey = forge.pki.privateKeyToPem(keyBag.key);
-    }
+    const pemKey = forge.pki.privateKeyToPem(key);
 
     return {
       valid: true,

@@ -70,9 +70,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         type: 'success',
         text: `Certificado válido! Titular: ${res.owner} (${res.daysRemaining} dias restantes).`,
       });
+      setCertPassword('');
+      setCertFileBase64('');
       setFormData((prev) => ({
         ...prev,
-        enableNfce: true,
         certificateOwner: res.owner,
         certificateExpiresAt: res.expiresAt,
       }));
@@ -416,7 +417,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
                   >
                     <option value="homologacao">🧪 Homologação (Ambiente de Testes - Sem valor fiscal)</option>
-                    <option value="producao">🚀 Produção (Oficial - Gera Imposto Real na SEFAZ)</option>
+                    <option value="producao">Produção (NFC-e com validade fiscal)</option>
                   </select>
                 </div>
 
@@ -430,13 +431,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
                   >
                     <option value="SP">SP - São Paulo (SEFAZ-SP)</option>
-                    <option value="RJ">RJ - Rio de Janeiro</option>
-                    <option value="MG">MG - Minas Gerais</option>
-                    <option value="PR">PR - Paraná</option>
-                    <option value="RS">RS - Rio Grande do Sul</option>
-                    <option value="SC">SC - Santa Catarina</option>
-                    <option value="BA">BA - Bahia</option>
-                    <option value="GO">GO - Goiás</option>
                   </select>
                 </div>
               </div>
@@ -466,8 +460,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 outline-none focus:border-emerald-500"
                   >
                     <option value="1">1 - Simples Nacional (Padrão Pequeno Varejo)</option>
-                    <option value="2">2 - Simples Nacional - Excesso de Sublimite</option>
-                    <option value="3">3 - Regime Normal (Lucro Presumido / Real)</option>
                   </select>
                 </div>
 
@@ -478,7 +470,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input
                     type="number"
                     min="1"
-                    max="999"
+                    max="899"
                     value={formData.nfceSeries || 1}
                     onChange={(e) => handleChange('nfceSeries', parseInt(e.target.value, 10) || 1)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 outline-none focus:border-emerald-500"
@@ -486,35 +478,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* CSC Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    ID do CSC (SEFAZ)
+                {([
+                  ['fiscalLegalName', 'Razão social'],
+                  ['fiscalStreet', 'Logradouro fiscal'],
+                  ['fiscalStreetNumber', 'Número'],
+                  ['fiscalDistrict', 'Bairro'],
+                  ['fiscalCityCode', 'Código IBGE do município'],
+                  ['fiscalPostalCode', 'CEP'],
+                  ['fiscalTaxSource', 'Fonte dos tributos aproximados'],
+                ] as const).map(([field, label]) => (
+                  <label key={field} className="block text-xs font-bold text-slate-700">
+                    {label}
+                    <input
+                      value={formData[field] || ''}
+                      onChange={e => handleChange(field, e.target.value)}
+                      className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                    />
                   </label>
+                ))}
+                <label className="block text-xs font-bold text-slate-700">
+                  Primeiro número ao iniciar a série neste ambiente
                   <input
-                    type="text"
-                    value={formData.cscId || ''}
-                    onChange={(e) => handleChange('cscId', e.target.value)}
-                    placeholder="Ex: 000001"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
+                    type="number" min={1} max={999999999}
+                    value={formData.nfceInitialNumber ?? 1}
+                    onChange={e => handleChange('nfceInitialNumber', e.target.valueAsNumber)}
+                    className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                   />
-                  <span className="text-[10px] text-slate-400 mt-1 block">Normalmente 000001 ou 000002 fornecido pelo portal da SEFAZ</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Código de Segurança do Contribuinte (Token CSC)
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.cscToken || ''}
-                    onChange={(e) => handleChange('cscToken', e.target.value)}
-                    placeholder="Chave alfanumérica secreta da SEFAZ"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 outline-none focus:border-emerald-500"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">Token gerado pelo contador na Nota Fiscal Paulista / Posto Fiscal</span>
-                </div>
+                </label>
               </div>
 
               {/* Certificate A1 (.pfx) Upload Box */}

@@ -5,6 +5,9 @@ import { authMiddleware } from '../middleware/auth';
 import { parseAndValidateCertificate } from '../services/fiscal/certificate';
 import { emitNfceForSale } from '../services/fiscal/nfceService';
 
+import { sealFiscalSecret } from '../services/fiscal/secrets';
+import { publicStoreSettings } from './settings';
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -15,29 +18,25 @@ const certificateSchema = z.object({
 });
 
 router.post('/certificate', async (req, res) => {
+  if (!['admin', 'manager'].includes(req.user?.role || '')) {
+    return res.status(403).json({ error: 'Somente administradores e gerentes podem instalar o certificado.' });
+  }
   try {
     const { pfxBase64, password } = certificateSchema.parse(req.body);
 
     const certInfo = parseAndValidateCertificate(pfxBase64, password);
 
-    // Salvar no StoreSetting do tenant
+    if (!certInfo.cnpj) throw new Error('Use um certificado digital A1 de pessoa jurídica com CNPJ.');
+    const data = {
+      certificateA1: sealFiscalSecret(pfxBase64),
+      certificatePassword: sealFiscalSecret(password),
+      certificateOwner: certInfo.ownerName,
+      certificateExpiresAt: certInfo.expiresAt,
+    };
     await prisma.storeSetting.upsert({
       where: { tenantId: req.tenantId! },
-      update: {
-        certificateA1: pfxBase64,
-        certificatePassword: password,
-        certificateOwner: certInfo.ownerName,
-        certificateExpiresAt: certInfo.expiresAt,
-        enableNfce: true,
-      },
-      create: {
-        tenantId: req.tenantId!,
-        certificateA1: pfxBase64,
-        certificatePassword: password,
-        certificateOwner: certInfo.ownerName,
-        certificateExpiresAt: certInfo.expiresAt,
-        enableNfce: true,
-      },
+      update: data,
+      create: { ...data, tenantId: req.tenantId! },
     });
 
     res.json({
@@ -70,7 +69,7 @@ router.post('/emit/:saleId', async (req, res) => {
       customerCpf,
     });
 
-    if (result.success) {
+    if (result.success || result.fiscalStatus === 'pending') {
       res.json(result);
     } else {
       res.status(422).json(result);
@@ -78,6 +77,17 @@ router.post('/emit/:saleId', async (req, res) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message || 'Erro ao emitir NFC-e' });
   }
+});
+
+router.get('/xml/:saleId', async (req, res) => {
+  const sale = await prisma.sale.findFirst({
+    where: { id: req.params.saleId, tenantId: req.tenantId!, fiscalStatus: 'authorized',
+      nfceEnvironment: { not: null } },
+    select: { nfceXml: true, nfceAccessKey: true },
+  }).catch(() => undefined);
+  if (sale === undefined) return res.status(500).json({ error: 'Erro ao buscar XML fiscal.' });
+  if (!sale?.nfceXml) return res.status(404).json({ error: 'XML autorizado indisponível.' });
+  res.json({ xml: sale.nfceXml, fileName: `${sale.nfceAccessKey}-procNFe.xml` });
 });
 
 // Obter dados fiscais da venda para impressão de DANFE NFC-e
@@ -101,10 +111,11 @@ router.get('/danfe/:saleId', async (req, res) => {
       where: { tenantId: req.tenantId! },
     });
 
+    const { nfcePendingXml, ...publicSale } = sale;
     res.json({
-      sale,
-      store: setting,
-      isFiscal: sale.fiscalStatus === 'authorized',
+      sale: publicSale,
+      store: setting && publicStoreSettings(setting),
+      isFiscal: sale.fiscalStatus === 'authorized' && !!sale.nfceEnvironment,
       accessKey: sale.nfceAccessKey,
       protocol: sale.nfceProtocol,
       number: sale.nfceNumber,
