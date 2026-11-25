@@ -63,13 +63,15 @@ async function refreshAccessToken(): Promise<boolean> {
       body: JSON.stringify({ refreshToken: refresh }),
     });
 
+    if (getRefreshToken() !== refresh) return !!getAccessToken();
     if (!res.ok) return false;
 
     const data = await res.json();
-    setTokens(data.accessToken, data.refreshToken);
-    return true;
+    // A PIN login may have changed the active operator during this request.
+    if (getRefreshToken() === refresh) setTokens(data.accessToken, data.refreshToken);
+    return !!getAccessToken();
   } catch {
-    return false;
+    return getRefreshToken() !== refresh && !!getAccessToken();
   }
 }
 
@@ -133,14 +135,18 @@ export const auth = {
       body: JSON.stringify({ email, password }),
     }),
 
-  loginWithPin: (userId: string, pin: string) =>
-    request<{
+  loginWithPin: async (userId: string, pin: string) => {
+    const result = await request<{
       accessToken: string;
+      refreshToken: string;
       user: { id: string; name: string; role: string };
     }>('/auth/pin', {
       method: 'POST',
       body: JSON.stringify({ userId, pin }),
-    }),
+    });
+    setTokens(result.accessToken, result.refreshToken);
+    return result;
+  },
 };
 
 // ─── Products ────────────────────────────────────────────────────────
