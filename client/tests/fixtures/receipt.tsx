@@ -14,6 +14,7 @@ const settings: StoreSettings = {
   receiptWidth: params.get('width') === '80mm' ? '80mm' : '58mm',
   receiptFooter: 'Obrigado pela preferência! Volte sempre!',
   pixKey: '', pixReceiver: '', pixCity: '', enableSound: false,
+  enableNfce: params.has('a3'), fiscalCertificateMode: params.has('a3') ? 'A3' : 'A1',
   cloudSyncEnabled: false, cloudStoreId: '', cloudApiKey: '', appVersion: 'test',
 };
 const sale: Sale = {
@@ -33,10 +34,11 @@ const sale: Sale = {
   customerName: 'Cliente com nome bastante longo', customerCpf: '000.000.000-00',
   status: 'completed', synced: true,
   fiscalStatus: fiscal ? 'authorized' : 'none',
+  nfceEnvironment: fiscal ? 'producao' : undefined,
   nfceNumber: fiscal ? 123 : undefined, nfceSeries: 1,
-  nfceAccessKey: fiscal ? '12345678901234567890123456789012345678901234' : undefined,
+  nfceAccessKey: fiscal ? '35261112345678000195650010000001231123456780' : undefined,
   nfceProtocol: fiscal ? '123456789012345' : undefined,
-  nfceQrCodeUrl: fiscal ? 'https://example.com/nfce?chave=12345678901234567890123456789012345678901234' : undefined,
+  nfceQrCodeUrl: fiscal ? 'https://example.com/nfce?chave=35261112345678000195650010000001231123456780' : undefined,
 };
 createRoot(document.getElementById('root')!).render(
   <ReceiptModal sale={sale} settings={settings} onClose={() => {}} onNewSale={() => {

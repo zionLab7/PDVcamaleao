@@ -1,3 +1,4 @@
+import { NfeRecipientForm } from './NfeRecipientForm';
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
@@ -13,7 +14,7 @@ import {
   ShieldCheck,
   AlertCircle
 } from 'lucide-react';
-import { Sale, StoreSettings } from '../../types';
+import { NfeRecipient, Sale, StoreSettings } from '../../types';
 import * as api from '../../services/api';
 import { sound } from '../../services/audio';
 import { getPrinterPaperWidth, savePrinterPaperWidth, printThermalReceipt, PaperWidth } from '../../services/thermalPrint';
@@ -63,35 +64,57 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   }, [sale.nfceQrCodeUrl]);
 
-  // Handle NFC-e emission request
-  const handleEmitNfce = async () => {
+  const [showNfeForm, setShowNfeForm] = useState(false);
+  const isNfe = accessKey?.slice(20, 22) === '55';
+  const a3 = settings.fiscalCertificateMode === 'A3';
+
+  const applyFiscalResult = React.useCallback((res: api.FiscalResult) => {
+    setFiscalStatus(res.fiscalStatus);
+    setAccessKey(res.accessKey);
+    setProtocol(res.protocol);
+    setNfceNumber(res.number);
+    setNfceSeries(res.series);
+    setEnvironment(res.environment);
+    setIssuedAt(res.issuedAt);
+    setTaxEstimate(res.taxEstimate);
+    setTaxSource(res.taxSource);
+    setFiscalError(res.errorMessage || (res.fiscalStatus === 'pending'
+      ? 'Confirme a operação na estação Windows com o cartão A3.' : null));
+    if (res.success && res.qrCodeUrl) {
+      void QRCode.toDataURL(res.qrCodeUrl, { width: 160, margin: 1 }).then(setQrCodeDataUrl).catch(console.error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (fiscalStatus !== 'pending') return;
+    let active = true;
+    let waiting = false;
+    const timer = window.setInterval(async () => {
+      if (waiting) return;
+      waiting = true;
+      try {
+        const result = await api.fiscal.status(sale.id);
+        if (active) applyFiscalResult(result);
+      } catch {
+        // Keep the last visible status while the server is unavailable.
+      } finally {
+        waiting = false;
+      }
+    }, 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [sale.id, fiscalStatus, applyFiscalResult]);
+
+  const handleEmitNfce = async (recipient?: NfeRecipient) => {
     setIsEmittingNfce(true);
     setFiscalError(null);
-
     try {
-      const res = await api.fiscal.emitNfce(sale.id, sale.customerCpf);
-      if (res.success && res.qrCodeUrl) {
-        sound.playSuccess();
-        setFiscalStatus('authorized');
-        setAccessKey(res.accessKey);
-        setProtocol(res.protocol);
-        setNfceNumber(res.number);
-        setNfceSeries(res.series);
-        setEnvironment(res.environment);
-        setIssuedAt(res.issuedAt);
-        setTaxEstimate(res.taxEstimate);
-        setTaxSource(res.taxSource);
-
-        const qr = await QRCode.toDataURL(res.qrCodeUrl, { width: 160, margin: 1 });
-        setQrCodeDataUrl(qr);
-      } else {
-        sound.playAlert();
-        setFiscalStatus(res.fiscalStatus);
-        setFiscalError(res.errorMessage || 'Rejeição na autorização da NFC-e');
-      }
+      const result = await api.fiscal.emitNfce(sale.id, sale.customerCpf, recipient);
+      applyFiscalResult(result);
+      setShowNfeForm(false);
+      if (result.success) sound.playSuccess();
     } catch (err: any) {
       sound.playAlert();
-      setFiscalError(err.message || 'Erro ao conectar aos servidores da SEFAZ');
+      setFiscalError(err.message || 'Erro ao solicitar a emissão fiscal.');
     } finally {
       setIsEmittingNfce(false);
     }
@@ -134,7 +157,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     timeStyle: 'medium',
   });
 
-  const isFiscalAuthorized = fiscalStatus === 'authorized' && !!environment;
+  const downloadNfeDanfe = async () => {
+    try {
+      const { xml } = await api.fiscal.getXml(sale.id);
+      const { saveNfeDanfe } = await import('../../services/nfeDanfe');
+      saveNfeDanfe(xml);
+    } catch (error) {
+      setFiscalError(error instanceof Error ? error.message : 'Falha ao gerar o DANFE.');
+    }
+  };
+
+  const isFiscalAuthorized = fiscalStatus === 'authorized' && !!environment && !isNfe;
   const consultationUrl = environment === 'homologacao'
     ? 'https://www.homologacao.nfce.fazenda.sp.gov.br/NFCeConsultaPublica'
     : 'https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica';
@@ -376,7 +409,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <div>
                 <h3 className="font-extrabold text-base leading-tight">Venda Concluída com Sucesso!</h3>
                 <p className="text-xs text-emerald-100">
-                  {isFiscalAuthorized ? 'NFC-e Autorizada pela SEFAZ' : 'Recibo / Cupom de Venda'}
+                  {isNfe && fiscalStatus === 'authorized' ? 'NF-e autorizada' : isFiscalAuthorized ? 'NFC-e autorizada' : 'Recibo / Cupom de Venda'}
                 </p>
               </div>
             </div>
@@ -393,14 +426,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div className="p-3 bg-rose-50 border-b border-rose-200 flex items-start space-x-2 text-rose-800 text-xs">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <span className="font-bold block">Aviso SEFAZ:</span>
+                <span className="font-bold block">Status fiscal</span>
                 <span>{fiscalError}</span>
               </div>
             </div>
           )}
 
           {/* Receipt preview; the print target is mounted separately on body. */}
-          <div className="p-4 sm:p-5 bg-slate-100 flex justify-center overflow-y-auto max-h-[52vh]">
+          {!showNfeForm && <div className="p-4 sm:p-5 bg-slate-100 flex justify-center overflow-y-auto max-h-[52vh]">
             <div
               id="receipt-preview"
               className={`bg-white p-4 sm:p-5 shadow-md border border-dashed border-slate-300 font-mono text-slate-900 text-xs leading-tight select-text ${
@@ -409,15 +442,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             >
               {receiptContent}
             </div>
-          </div>
+          </div>}
 
-          {/* Action Buttons */}
-          <div className="p-4 bg-white border-t border-slate-200 space-y-2">
+          <div className="p-4 bg-white border-t border-slate-200 space-y-2 overflow-y-auto shrink-0 max-h-[78vh]">
+            {showNfeForm && <NfeRecipientForm name={sale.customerName} sending={isEmittingNfce}
+              onSubmit={handleEmitNfce} onCancel={() => setShowNfeForm(false)} />}
+            {!showNfeForm && <>
+            {a3 && settings.enableNfce && !showNfeForm && ['none', 'rejected'].includes(fiscalStatus)
+              && !legacyAuthorization && sale.status === 'completed' && (
+              <button type="button" onClick={() => setShowNfeForm(true)}
+                className="w-full rounded-xl bg-purple-700 px-4 py-2.5 text-xs font-bold text-white">
+                Emitir NF-e modelo 55 para CNPJ
+              </button>
+            )}
+            {isNfe && fiscalStatus === 'authorized' && (
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900">
+                <p className="font-bold">NF-e #{nfceNumber} autorizada {environment === 'homologacao' ? 'em homologação' : 'pela SEFAZ-SP'}</p>
+                <p className="break-all">Chave {accessKey}</p>
+                <p>Protocolo {protocol}</p>
+              </div>
+            )}
 
             {/* Fiscal Button (if not already authorized) */}
-            {settings.enableNfce && !isFiscalAuthorized && !legacyAuthorization && sale.status === 'completed' && (
+            {(settings.enableNfce || fiscalStatus === 'pending') && fiscalStatus !== 'authorized' && !showNfeForm && !legacyAuthorization && sale.status === 'completed' && (
               <button
-                onClick={handleEmitNfce}
+                onClick={() => void handleEmitNfce()}
                 disabled={isEmittingNfce}
                 className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl font-extrabold text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-purple-600/20"
               >
@@ -429,13 +478,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 ) : (
                   <>
                     <FileText className="w-4 h-4" />
-                    <span>{fiscalStatus === 'pending' ? 'Consultar NFC-e pendente' : 'Emitir NFC-e na SEFAZ'}</span>
+                    <span>{fiscalStatus === 'pending' ? 'Retomar ou consultar nota pendente' : 'Emitir NFC-e na SEFAZ'}</span>
                   </>
                 )}
               </button>
             )}
 
-            {isFiscalAuthorized && (
+            {isNfe && fiscalStatus === 'authorized' && !!environment && (
+              <button type="button" onClick={downloadNfeDanfe}
+                className="w-full rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold">
+                Baixar DANFE em PDF
+              </button>
+            )}
+
+            {fiscalStatus === 'authorized' && !!environment && (
               <button type="button" onClick={downloadFiscalXml}
                 className="w-full py-2 px-4 border border-slate-200 rounded-xl text-xs font-bold">
                 Baixar XML fiscal autorizado
@@ -498,6 +554,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <RotateCcw className="w-4 h-4" />
               <span>NOVA VENDA (Pressione ENTER)</span>
             </button>
+            </>}
           </div>
 
         </div>

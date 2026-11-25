@@ -9,6 +9,7 @@ import usersRoutes from './routes/users';
 import settingsRoutes from './routes/settings';
 import reportsRoutes from './routes/reports';
 import adminRoutes from './routes/admin';
+import fiscalA3Routes from './routes/fiscalA3';
 import fiscalRoutes from './routes/fiscal';
 import quotesRoutes from './routes/quotes';
 import categoriesRoutes from './routes/categories';
@@ -21,6 +22,7 @@ const port = process.env.PORT || 3001;
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
 }));
+app.use('/api/fiscal-a3', express.json({ limit: '2mb' }), fiscalA3Routes);
 app.use(express.json());
 
 // Routes

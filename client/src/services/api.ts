@@ -1,3 +1,4 @@
+import type { NfeRecipient } from '../types';
 /**
  * API Client for PDV Camaleão Backend
  * Handles all HTTP communication with JWT authentication
@@ -286,7 +287,24 @@ export const supervisor = {
 
 // ─── Fiscal / NFC-e ──────────────────────────────────────────────────
 
+export type FiscalResult = {
+      success: boolean;
+      fiscalStatus: 'authorized' | 'rejected' | 'pending';
+      environment?: 'homologacao' | 'producao';
+      issuedAt?: string;
+      taxEstimate?: number;
+      taxSource?: string;
+      accessKey?: string;
+      protocol?: string;
+      number?: number;
+      series?: number;
+      qrCodeUrl?: string;
+      errorMessage?: string;
+    };
+
 export const fiscal = {
+  pairA3: () => request<{ token: string }>('/fiscal-a3/pair', { method: 'POST' }),
+  status: (saleId: string) => request<FiscalResult>(`/fiscal/status/${saleId}`),
   uploadCertificate: (pfxBase64: string, password?: string) =>
     request<{
       success: boolean;
@@ -300,23 +318,10 @@ export const fiscal = {
       body: JSON.stringify({ pfxBase64, password }),
     }),
 
-  emitNfce: (saleId: string, customerCpf?: string) =>
-    request<{
-      success: boolean;
-      fiscalStatus: 'authorized' | 'rejected' | 'pending';
-      environment?: 'homologacao' | 'producao';
-      issuedAt?: string;
-      taxEstimate?: number;
-      taxSource?: string;
-      accessKey?: string;
-      protocol?: string;
-      number?: number;
-      series?: number;
-      qrCodeUrl?: string;
-      errorMessage?: string;
-    }>(`/fiscal/emit/${saleId}`, {
+  emitNfce: (saleId: string, customerCpf?: string, recipient?: NfeRecipient) =>
+    request<FiscalResult>(`/fiscal/emit/${saleId}`, {
       method: 'POST',
-      body: JSON.stringify({ customerCpf }),
+      body: JSON.stringify({ customerCpf, recipient }),
     }),
 
   getXml: (saleId: string) => request<{ xml: string; fileName: string }>(`/fiscal/xml/${saleId}`),

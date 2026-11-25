@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { nfeRecipientSchema } from '../services/fiscal/nfeRecipient';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { authMiddleware } from '../middleware/auth';
@@ -56,26 +57,53 @@ router.post('/certificate', async (req, res) => {
 // Emissão de NFC-e para uma venda
 const emitSchema = z.object({
   customerCpf: z.string().optional(),
+  recipient: nfeRecipientSchema.optional(),
 });
 
 router.post('/emit/:saleId', async (req, res) => {
   try {
     const { saleId } = req.params;
-    const { customerCpf } = emitSchema.parse(req.body);
+    const body = emitSchema.safeParse(req.body);
+    if (!body.success) {
+      const first = body.error.issues[0];
+      return res.status(400).json({ error: `Confira ${first.path.join('.')}: ${first.message}` });
+    }
+    const { customerCpf, recipient } = body.data;
 
     const result = await emitNfceForSale({
       saleId,
       tenantId: req.tenantId!,
-      customerCpf,
+      customerCpf, recipient,
     });
 
     if (result.success || result.fiscalStatus === 'pending') {
       res.json(result);
     } else {
-      res.status(422).json(result);
+      res.status(422).json({ ...result, error: result.errorMessage });
     }
   } catch (error: any) {
     res.status(400).json({ error: error.message || 'Erro ao emitir NFC-e' });
+  }
+});
+
+router.get('/status/:saleId', async (req, res) => {
+  try {
+    const sale = await prisma.sale.findFirst({
+      where: { id: req.params.saleId, tenantId: req.tenantId! },
+      select: { fiscalStatus: true, nfceError: true, nfceAccessKey: true, nfceEnvironment: true,
+        nfceIssuedAt: true, nfceProtocol: true, nfceNumber: true, nfceSeries: true, nfceQrCodeUrl: true,
+        nfceTaxEstimate: true, nfceTaxSource: true },
+    });
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
+    res.json({
+      success: sale.fiscalStatus === 'authorized' && !!sale.nfceEnvironment,
+      fiscalStatus: sale.fiscalStatus, errorMessage: sale.nfceError, accessKey: sale.nfceAccessKey,
+      environment: sale.nfceEnvironment, issuedAt: sale.nfceIssuedAt, protocol: sale.nfceProtocol,
+      number: sale.nfceNumber, series: sale.nfceSeries, qrCodeUrl: sale.nfceQrCodeUrl,
+      taxEstimate: sale.nfceTaxEstimate, taxSource: sale.nfceTaxSource,
+    });
+  } catch {
+    res.status(500).json({ error: 'Erro ao consultar a emissão.' });
   }
 });
 

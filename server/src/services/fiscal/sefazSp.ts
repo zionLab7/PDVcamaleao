@@ -77,6 +77,7 @@ export function parseSefazResult(xml: string, accessKey: string, environment: Fi
     cStat,
     xMotivo,
     protocol: success ? protocol : undefined,
+    digest: success && info ? read(info, 'digVal') : undefined,
     protocolXml: success ? new XMLSerializer().serializeToString(protocolElement!) : undefined,
     pending: !success && ([100, 103, 104, 105, 106, 108, 109, 150, 204, 539, 999].includes(cStat) || operation === 'query'),
   };

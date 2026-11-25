@@ -28,6 +28,9 @@ const settingsSchema = z.object({
   stateRegistration: z.string().optional().nullable(),
   taxRegime: z.string().optional().default('1'),
   nfceSeries: z.number().int().min(1).max(899).optional().default(1),
+  fiscalCertificateMode: z.enum(['A1', 'A3']).optional(),
+  nfeSeries: z.number().int().min(1).max(899).optional(),
+  nfeInitialNumber: z.number().int().min(1).max(999999999).optional(),
   nfceInitialNumber: z.number().int().min(1).max(999999999).optional(),
   fiscalLegalName: z.string().max(60).optional().nullable(),
   fiscalStreet: z.string().max(60).optional().nullable(),
@@ -38,7 +41,7 @@ const settingsSchema = z.object({
   fiscalTaxSource: z.string().max(120).optional().nullable(),
 });
 
-export function publicStoreSettings({ certificateA1, certificatePassword, cscToken, ...settings }: StoreSetting) {
+export function publicStoreSettings({ certificateA1, certificatePassword, cscToken, fiscalA3TokenHash, ...settings }: StoreSetting) {
   return settings;
 }
 

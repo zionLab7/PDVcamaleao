@@ -35,6 +35,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [formData, setFormData] = useState<StoreSettings>({ ...settings });
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [a3Token, setA3Token] = useState('');
+  const [a3Message, setA3Message] = useState('');
+  const [a3Pairing, setA3Pairing] = useState(false);
+
+  const pairA3 = async () => {
+    setA3Pairing(true);
+    setA3Token('');
+    setA3Message('');
+    try {
+      setA3Token((await api.fiscal.pairA3()).token);
+    } catch (error) {
+      setA3Message(error instanceof Error ? error.message : 'Erro ao vincular a estação Windows.');
+    } finally {
+      setA3Pairing(false);
+    }
+  };
 
   // Certificate A1 state
   const [certFileBase64, setCertFileBase64] = useState<string>('');
@@ -377,7 +393,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center space-x-2 text-slate-900 font-black text-base">
               <FileText className="w-5 h-5 text-emerald-600" />
-              <span>Emissão Fiscal & NFC-e (Cupom Fiscal Oficial)</span>
+              <span>Emissão fiscal na SEFAZ-SP</span>
             </div>
             <span className={`px-2.5 py-1 text-xs font-black rounded-full uppercase ${
               formData.enableNfce ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
@@ -389,9 +405,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Toggle Enable NFC-e */}
           <label className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors">
             <div>
-              <span className="text-xs font-bold text-slate-900 block">Ativar Emissão de Cupom Fiscal (NFC-e)</span>
+              <span className="text-xs font-bold text-slate-900 block">Ativar emissão fiscal</span>
               <span className="text-[11px] text-slate-500 block">
-                Permite emitir cupons fiscais eletrônicos oficiais autorizados pela SEFAZ diretamente na frente de caixa
+                Emita documentos fiscais diretamente das vendas registradas.
               </span>
             </div>
             <input
@@ -508,7 +524,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
               </div>
 
-              {/* Certificate A1 (.pfx) Upload Box */}
+              <label className="block text-xs font-bold text-slate-700">
+                Certificado fiscal
+                <select value={formData.fiscalCertificateMode || 'A1'}
+                  onChange={e => handleChange('fiscalCertificateMode', e.target.value)}
+                  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl">
+                  <option value="A1">A1 em arquivo</option>
+                  <option value="A3">A3 em cartão no Windows</option>
+                </select>
+              </label>
+
+              {formData.fiscalCertificateMode === 'A3' && (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Série da NF-e modelo 55
+                      <input type="number" min={1} max={899} value={formData.nfeSeries ?? 1}
+                        onChange={e => handleChange('nfeSeries', e.target.valueAsNumber)}
+                        className="mt-1 w-full p-2 border border-slate-300 rounded-xl" />
+                    </label>
+                    <label className="block text-xs font-bold text-slate-700">
+                      Primeiro número da série da NF-e
+                      <input type="number" min={1} max={999999999} value={formData.nfeInitialNumber ?? 1}
+                        onChange={e => handleChange('nfeInitialNumber', e.target.valueAsNumber)}
+                        className="mt-1 w-full p-2 border border-slate-300 rounded-xl" />
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Primeiro salve os dados fiscais. Ao gerar um novo vínculo, o token anterior é revogado.
+                    {settings.fiscalA3LastSeen && ` Último contato: ${new Date(settings.fiscalA3LastSeen).toLocaleString('pt-BR')}.`}
+                  </p>
+                  <button type="button" onClick={pairA3} disabled={a3Pairing}
+                    className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white">
+                    {a3Pairing ? 'Gerando vínculo…' : 'Gerar token para estação A3'}
+                  </button>
+                  <a href="/EstacaoFiscalA3.ps1" download className="ml-3 text-xs font-bold text-purple-700 underline">
+                    Baixar estação A3 para Windows
+                  </a>
+                  {a3Message && <p role="alert" className="text-xs text-rose-700">{a3Message}</p>}
+                  {a3Token && (
+                    <label className="block text-xs font-bold text-slate-700">
+                      Cole este token na estação Windows
+                      <input value={a3Token} readOnly onFocus={e => e.target.select()}
+                        className="mt-1 w-full rounded-xl border p-2 font-mono" />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {formData.fiscalCertificateMode !== 'A3' && (
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex items-center space-x-2 text-slate-900 font-bold text-xs uppercase tracking-wider">
                   <Key className="w-4 h-4 text-emerald-600" />
@@ -591,6 +655,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </div>
 
+              )}
             </div>
           )}
         </div>

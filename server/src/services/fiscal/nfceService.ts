@@ -1,3 +1,4 @@
+import { NfeRecipient } from './nfeRecipient';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../prisma';
 import { parseAndValidateCertificate } from './certificate';
@@ -26,6 +27,13 @@ function isCst(value: string | null): value is typeof contributionCodes[number] 
   return contributionCodes.some(code => code === value);
 }
 
+function validGtin(gtin: string): boolean {
+  if (!/^(?:\d{8}|\d{12,14})$/.test(gtin) || /^0+$/.test(gtin)) return false;
+  const sum = [...gtin.slice(0, -1)].reverse().reduce((total, digit, index) =>
+    total + Number(digit) * (index % 2 === 0 ? 3 : 1), 0);
+  return (10 - sum % 10) % 10 === Number(gtin.at(-1));
+}
+
 function validCpf(value: string): boolean {
   if (!/^\d{11}$/.test(value) || /^(\d)\1+$/.test(value)) return false;
   return [9, 10].every(length => {
@@ -34,10 +42,11 @@ function validCpf(value: string): boolean {
   });
 }
 
-export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
+export async function emitNfceForSale({ saleId, tenantId, customerCpf, recipient }: {
   saleId: string;
   tenantId: string;
   customerCpf?: string;
+  recipient?: NfeRecipient;
 }): Promise<NfceEmissionResult> {
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId },
@@ -56,18 +65,25 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
   }
 
   const setting = await prisma.storeSetting.findUnique({ where: { tenantId } });
-  if (!setting?.enableNfce || !setting.certificateA1) {
-    throw new Error('Ative a NFC-e e instale o certificado A1 em Configurações > Dados Fiscais.');
-  }
-  const pfxBase64 = openFiscalSecret(setting.certificateA1);
-  const certificatePassword = openFiscalSecret(setting.certificatePassword || '');
-  const certificate = parseAndValidateCertificate(pfxBase64, certificatePassword);
+  if (!setting) throw new Error('Configure os dados fiscais do estabelecimento.');
   const cnpj = digits(setting.document);
-  if (!/^\d{14}$/.test(cnpj) || certificate.cnpj?.slice(0, 8) !== cnpj.slice(0, 8)) {
-    throw new Error('O CNPJ da loja deve corresponder à empresa titular do certificado A1.');
-  }
   const environment = (sale.nfceEnvironment && sale.fiscalStatus === 'pending'
     ? sale.nfceEnvironment : setting.fiscalEnvironment) as FiscalEnvironment;
+  const savedJob = sale.fiscalStatus === 'pending'
+    ? await prisma.fiscalA3Job.findUnique({ where: { saleId } }) : null;
+  const model = sale.fiscalStatus === 'pending' ? sale.nfceAccessKey?.slice(20, 22) : recipient ? '55' : '65';
+  const useA3 = !!savedJob || ((!sale.nfceAccessKey || sale.fiscalStatus !== 'pending') && setting.fiscalCertificateMode === 'A3');
+  if (!setting.enableNfce && sale.fiscalStatus !== 'pending') throw new Error('Ative a emissão em Dados Fiscais.');
+  if (model === '55' && !useA3) throw new Error('Selecione a estação A3 para emitir NF-e modelo 55.');
+  if (!/^\d{14}$/.test(cnpj)) throw new Error('Confira o CNPJ do emitente.');
+  if (useA3 && !setting.fiscalA3TokenHash) throw new Error('Vincule a estação Windows em Dados Fiscais.');
+  if (!useA3 && !setting.certificateA1) throw new Error('Instale o certificado A1 em Dados Fiscais.');
+  const pfxBase64 = useA3 ? '' : openFiscalSecret(setting.certificateA1!);
+  const certificatePassword = useA3 ? '' : openFiscalSecret(setting.certificatePassword || '');
+  const certificate = useA3 ? null : parseAndValidateCertificate(pfxBase64, certificatePassword);
+  if (certificate && certificate.cnpj?.slice(0, 8) !== cnpj.slice(0, 8)) {
+    throw new Error('O CNPJ da loja deve corresponder à empresa titular do certificado A1.');
+  }
   const connection = { pfxBase64, certificatePassword, environment };
   const saved = sale.fiscalStatus === 'pending';
   let accessKey = sale.nfceAccessKey || '';
@@ -80,7 +96,7 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
   let taxSource = sale.nfceTaxSource || '';
 
   if (saved) {
-    if (!signedXml || !accessKey || accessKey.slice(6, 20) !== cnpj) {
+    if ((!signedXml && !savedJob) || !accessKey || accessKey.slice(6, 20) !== cnpj) {
       throw new Error('Emissão pendente. Confira a chave na SEFAZ e mantenha o CNPJ do emitente.');
     }
   } else {
@@ -93,7 +109,7 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
           nfceAccessKey: { contains: cnpj } },
         select: { nfceAccessKey: true },
       });
-      if (!verified.some(note => note.nfceAccessKey?.slice(6, 20) === cnpj)) throw new Error('Autorize uma NFC-e de teste para este CNPJ antes de emitir em produção.');
+      if (!verified.some(note => note.nfceAccessKey?.slice(6, 22) === cnpj + model)) throw new Error('Autorize uma nota de teste do mesmo modelo para este CNPJ antes de emitir em produção.');
     }
     const ie = digits(setting.stateRegistration);
     const postalCode = digits(setting.fiscalPostalCode);
@@ -111,8 +127,8 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
       taxSource: requiredText(setting.fiscalTaxSource, 'fonte dos tributos aproximados', 120),
     };
     taxSource = issuer.taxSource;
-    const cpf = digits(customerCpf || sale.customerCpf);
-    if ((customerCpf || sale.customerCpf) && !validCpf(cpf)) throw new Error('CPF do consumidor inválido.');
+    const cpf = recipient ? '' : digits(customerCpf || sale.customerCpf);
+    if (!recipient && (customerCpf || sale.customerCpf) && !validCpf(cpf)) throw new Error('CPF do consumidor inválido.');
     const total = cents(sale.total);
     const change = cents(sale.change);
     if (total <= 0 || sale.items.length === 0 || sale.items.length > 990) {
@@ -134,7 +150,10 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
       const p = item.product;
       const { ncm, cfop, csosn, origin, pisCst, cofinsCst, taxEstimateRate } = p;
       const cest = digits(p.cest);
+      const gtin = p.fiscalUseBarcode ? p.barcode?.trim() || '' : undefined;
+      if (gtin !== undefined && !validGtin(gtin)) throw new Error(`GTIN fiscal inválido em “${item.productName}”.`);
       if (!/^\d{8}$/.test(ncm) || ncm === '00000000' || !/^5\d{3}$/.test(cfop)
+        || (recipient && !['5101', '5102', '5405'].includes(cfop))
         || !['102', '103', '300', '400', '500'].includes(csosn) || !/^[0-8]$/.test(origin)
         || (cest ? !/^\d{7}$/.test(cest) : csosn === '500')
         || !isCst(pisCst) || !isCst(cofinsCst) || taxEstimateRate === null || taxEstimateRate < 0 || taxEstimateRate > 100) {
@@ -149,7 +168,7 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
       const itemDiscount = ownDiscount[i] + cumulative - allocated;
       allocated = cumulative;
       return {
-        number: i + 1, productId: p.id, name: item.productName, ncm, cfop, origin, csosn, cest,
+        number: i + 1, productId: p.id, name: item.productName, ncm, gtin, cfop, origin, csosn, cest,
         unit: p.unit, quantity: item.quantity, unitPrice: item.unitPrice, totalPrice: gross[i] / 100,
         discount: itemDiscount / 100, pisCst, cofinsCst,
         taxEstimate: Math.round((gross[i] - itemDiscount) * taxEstimateRate / 100) / 100,
@@ -167,36 +186,44 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
       return { methodCode, amount: (cents(p.amount) + (p.id === cash?.id ? change : 0)) / 100 };
     });
 
-    series = setting.nfceSeries;
+    series = recipient ? setting.nfeSeries : setting.nfceSeries;
     date = new Date();
     const sequenceKey = { cnpj, environment, series };
     try {
       await prisma.$transaction(async tx => {
-        const sequence = await tx.nfceSequence.upsert({
+        const sequenceArgs = {
           where: { cnpj_environment_series: sequenceKey },
-          create: { ...sequenceKey, lastNumber: setting.nfceInitialNumber },
+          create: { ...sequenceKey, lastNumber: recipient ? setting.nfeInitialNumber : setting.nfceInitialNumber },
           update: { lastNumber: { increment: 1 } },
-        });
+        };
+        const sequence = recipient ? await tx.nfeSequence.upsert(sequenceArgs) : await tx.nfceSequence.upsert(sequenceArgs);
         number = sequence.lastNumber;
         if (number > 999999999) throw new Error('A numeração da série da NFC-e chegou ao limite.');
-        const key = generateNfceAccessKey({ cnpj, series, number, date });
+        const key = generateNfceAccessKey({ cnpj, series, number, date, model });
         accessKey = key.accessKey;
-        qrCodeUrl = generateNfceQrCodeUrl(accessKey, environment);
+        qrCodeUrl = recipient ? '' : generateNfceQrCodeUrl(accessKey, environment);
         const xml = buildNfceXml({
-          ...key, date, series, number, environment, issuer, customerCpf: cpf || undefined,
+          ...key, date, series, number, environment, issuer, customerCpf: cpf || undefined, recipient,
           items, payments: paymentDetails, total: total / 100, change: change / 100, qrCodeUrl,
         });
-        signedXml = signNfceXml({ xml, accessKey, pemKey: certificate.pemKey, pemCert: certificate.pemCert });
+        if (Buffer.byteLength(xml) > 480_000) throw new Error('O XML ultrapassa o limite de tamanho para transmissão fiscal.');
+        if (certificate) signedXml = signNfceXml({ xml, accessKey, pemKey: certificate.pemKey, pemCert: certificate.pemCert });
         const claimed = await tx.sale.updateMany({
           where: { id: saleId, tenantId, status: 'completed', fiscalStatus: sale.fiscalStatus, updatedAt: sale.updatedAt },
           data: {
             fiscalStatus: 'pending', nfceEnvironment: environment, nfceNumber: number, nfceSeries: series,
-            nfceAccessKey: accessKey, nfcePendingXml: signedXml, nfceQrCodeUrl: qrCodeUrl,
+            nfceAccessKey: accessKey, nfcePendingXml: signedXml || null, nfceQrCodeUrl: qrCodeUrl,
             nfceIssuedAt: date, nfceError: null, nfceTaxEstimate: taxEstimate, nfceTaxSource: taxSource,
-            customerCpf: cpf || null,
+            customerCpf: recipient ? sale.customerCpf : cpf || null,
           },
         });
         if (!claimed.count) throw new Error('A venda mudou durante a emissão. Reabra o comprovante.');
+        if (useA3) {
+          await tx.fiscalA3Job.upsert({
+            where: { saleId }, create: { saleId, tenantId, unsignedXml: xml },
+            update: { unsignedXml: xml, queued: true, leaseId: null, leaseUntil: date },
+          });
+        }
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -204,6 +231,17 @@ export async function emitNfceForSale({ saleId, tenantId, customerCpf }: {
       }
       throw error;
     }
+  }
+
+  if (useA3) {
+    if (savedJob && !savedJob.queued) {
+      await prisma.fiscalA3Job.updateMany({
+        where: { saleId, tenantId, queued: false, sale: { fiscalStatus: 'pending', nfceAccessKey: accessKey } },
+        data: { queued: true, leaseId: null, leaseUntil: new Date() },
+      });
+    }
+    return { success: false, fiscalStatus: 'pending', accessKey,
+      errorMessage: 'Solicitação na fila. Confirme a operação na estação Windows com o cartão A3.' };
   }
 
   const pending = { id: saleId, tenantId, nfceAccessKey: accessKey, fiscalStatus: 'pending' };

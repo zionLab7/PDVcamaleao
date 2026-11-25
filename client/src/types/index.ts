@@ -14,6 +14,7 @@ export type UnitType = 'UN' | 'KG' | 'LT' | 'PC' | 'CX';
 export interface Product {
   id: string;
   barcode: string;
+  fiscalUseBarcode?: boolean;
   name: string;
   category: string;
   costPrice: number;
@@ -137,6 +138,10 @@ export interface StoreSettings {
   fiscalPostalCode?: string;
   fiscalTaxSource?: string;
   nfceInitialNumber?: number;
+  fiscalCertificateMode?: 'A1' | 'A3';
+  fiscalA3LastSeen?: string | null;
+  nfeSeries?: number;
+  nfeInitialNumber?: number;
   certificateOwner?: string;
   certificateExpiresAt?: string;
   nfceSeries?: number;
@@ -190,4 +195,20 @@ export interface Quote {
   sale?: { sequenceNumber: number; status: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NfeRecipient {
+  cnpj: string;
+  name: string;
+  street: string;
+  number: string;
+  district: string;
+  city: string;
+  cityCode: string;
+  postalCode: string;
+  taxpayer: '1' | '9';
+  ie?: string;
+  finalConsumer: boolean;
+  presence: '1' | '2' | '3' | '9';
+  freightMode: '3' | '4' | '9';
 }

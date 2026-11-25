@@ -22,6 +22,7 @@ export interface NfceItem {
   productId: string;
   name: string;
   ncm: string;
+  gtin?: string;
   cfop: string;
   unit: string;
   quantity: number;

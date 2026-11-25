@@ -19,6 +19,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const [name, setName] = useState(productToEdit?.name || '');
   const [barcode, setBarcode] = useState(productToEdit?.barcode || '');
+  const [fiscalUseBarcode, setFiscalUseBarcode] = useState(productToEdit?.fiscalUseBarcode ?? false);
   const [category, setCategory] = useState(productToEdit?.category || 'Mercearia');
   const [categoriesList, setCategoriesList] = useState<Array<{ id: string; name: string; color?: string }>>([]);
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -171,6 +172,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const payload = {
       name: name.trim(),
       barcode: barcode.trim(),
+      fiscalUseBarcode,
       category: category.trim() || 'Geral',
       unit,
       costPrice: parsedCost,
@@ -527,6 +529,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
+              <label className="col-span-full flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                <input type="checkbox" checked={fiscalUseBarcode} onChange={e => setFiscalUseBarcode(e.target.checked)} />
+                Usar o código de barras como GTIN fiscal desta unidade
+              </label>
               {([
                 ['CEST (quando aplicável)', cest, setCest],
                 ['Origem da mercadoria', origin, setOrigin],
